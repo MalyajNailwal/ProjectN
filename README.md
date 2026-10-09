@@ -28,7 +28,7 @@ cd ..
 .venv/bin/python scripts/run_local.py
 ```
 
-Open `http://127.0.0.1:8000`. On Windows, use `.venv\Scripts\python.exe` and `python scripts/setup_native.py all --clone` from a suitable developer shell. `scripts/setup_native.py` also accepts individual components (`go`, `callback`, `semgrep`, `browser`, `application`, `accessibility`, `performance`, `technology`, `nmap`). The source clone script skips repositories that already exist. `scripts/run_local.py` accepts `--port` and defaults to loopback binding on both platforms.
+Open `http://127.0.0.1:8000`. On Windows, use `.venv\Scripts\python.exe` and `python scripts/setup_native.py all --clone` from a suitable developer shell. `scripts/setup_native.py` also accepts individual components (`go`, `callback`, `semgrep`, `browser`, `application`, `accessibility`, `performance`, `technology`, `nmap`). The source clone script checks existing repositories against `config/source-lock.json` and fetches the pinned revision for new clones. It reports a mismatch instead of changing an existing checkout. Run `python scripts/clone_sources.py --verify` to check local commits and origin URLs without network access. `scripts/run_local.py` accepts `--port` and defaults to loopback binding on both platforms.
 
 Scanner source paths, expected executable names, and CLI arguments are in `config/scanners.json`. Native executable files go in `tools/bin/` (`.exe` on Windows). `PROJECTN_SCANNER_<ID>` can point to a custom local executable for a scanner. `/api/scanners` shows setup status and the resolution for missing components.
 
@@ -38,7 +38,7 @@ AI drafting is optional and runs only when a finding's draft button is clicked. 
 
 Reports can be downloaded as JSON at `/api/scans/<id>/export`. Compare two complete scans of the same target at `/api/scans/<new-id>/compare/<old-id>`.
 
-Run `python scripts/source_manifest.py` to write `data/source-manifest.json` with every local upstream commit, working-tree state, and top-level license file. The manifest is local data and is not committed.
+The committed `config/source-lock.json` records the exact upstream source revisions needed on another computer. Run `python scripts/source_manifest.py` to write `data/source-manifest.json` with the actual local commits, working-tree state, and top-level license files. The runtime manifest is local data and is not committed. Third-party source checkouts, compiled executables, browser runtimes, virtual environments, scan data, and caches stay under ignored `tools/` and `data/` paths; run the setup scripts to obtain them on each computer.
 
 Only scan websites and networks you are authorized to assess. A public GitHub repository is cloned at the default-branch tip without submodules or Git LFS downloads and is treated as untrusted input; the app does not run its build scripts. Earlier Git history requires a local full clone and is reported as a coverage gap for public-URL scans.
 

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "repositories": {
+    "tools/web/technology-profiler/source": "d279d93042d034f3fd29d5a893d44ccc0595d3f8",
+    "tools/web/template-scanner/engine": "59dad1b6198f064d8b0626703c1dd338ce0b2e31",
+    "tools/network/port-and-service-mapper/source": "6b9d95c5f12efd9d53491b82a27423e0899b212b",
+    "tools/web/endpoint-crawler/source": "3e650646252e4a763d0fc230aff8bf96a3d86303",
+    "tools/web/browser-journeys/python-bindings": "1764101120254f14dc7d856453b9073c251d772d",
+    "tools/web/application-scanner/core": "38ffe34a1b03fd3241e0bb233c2a083df875ee33",
+    "tools/quality/accessibility/source": "f574690138d3956c43a6ba9449089da4f403742f",
+    "tools/quality/performance/source": "264774d92cef78df30539b87916557f25fd2d76e",
+    "tools/code/static-analyzer/source": "38a67a7eaf724fc266bf96e5705742bff8589775",
+    "tools/code/secret-detector/source": "b58d3f102cf3a2c84cb7f923d05c25c9b1aed84b",
+    "tools/code/dependency-risk/source": "85c61eee3bcccbf489da94c1c5f55c96f5b41e3d",
+    "tools/web/template-scanner/checks": "c8664a14c6078ae9da2d19dbb4c479981454cf65",
+    "tools/web/application-scanner/add-ons": "b769b254cef350eca913dd563e8fea0562256635",
+    "tools/web/browser-journeys/engine": "b28411b105a25fcd97014111764a1cf76f0c6bb0",
+    "tools/web/callback-service/source": "a5b78b2f1d990cd18c85cc422f0e651cf204c464",
+    "tools/code/static-analyzer/checks": "9bbf021d0acffa3095fcffd17b2bc7787eb4796d"
+  }
+}
