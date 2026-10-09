@@ -1,0 +1,30 @@
+name: Windows Go scanner builds
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Clone pinned Go scanner sources
+        run: |
+          python scripts/clone_sources.py --path tools/web/template-scanner/engine --path tools/web/endpoint-crawler/source --path tools/code/secret-detector/source --path tools/code/dependency-risk/source
+      - name: Build four Windows scanner binaries
+        run: python scripts/setup_native.py go
+      - name: Verify built executables
+        run: |
+          python -c "from pathlib import Path; names=('nuclei','katana','gitleaks','osv-scanner'); missing=[name for name in names if not (Path('tools/bin')/(name+'.exe')).is_file()]; assert not missing, missing; print('Built:', ', '.join(names))"
