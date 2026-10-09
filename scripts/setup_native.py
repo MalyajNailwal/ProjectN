@@ -101,18 +101,17 @@ def install_technology() -> None:
 def build_nmap() -> None:
     source = ROOT / "tools/network/port-and-service-mapper/source"
     if os.name == "nt":
-        run("msbuild", str(source / "mswin32/nmap.sln"), "/p:Configuration=Release", "/p:Platform=x64", cwd=source)
-        outputs = sorted(source.glob("mswin32/**/nmap.exe"), key=lambda item: item.stat().st_mtime)
-        if not outputs:
-            raise RuntimeError("MSBuild completed without nmap.exe; inspect the Visual Studio and Npcap SDK setup")
-        built = outputs[-1]
-    else:
-        run("./configure", "--without-zenmap", "--without-nping", "--without-ndiff", cwd=source)
-        run("make", "-j2", cwd=source)
-        built = source / "nmap"
-    destination = ROOT / "tools/bin" / ("nmap.exe" if os.name == "nt" else "nmap")
+        override = os.getenv("PROJECTN_SCANNER_PORTS")
+        installed = str(Path(override).expanduser()) if override and Path(override).expanduser().is_file() else shutil.which("nmap")
+        if not installed:
+            raise RuntimeError("Install the official Windows Nmap release and add nmap.exe to PATH, or set PROJECTN_SCANNER_PORTS to its executable. The cloned Nmap source remains available in tools/network/port-and-service-mapper/source. Windows source compilation requires the separate nmap-mswin32-aux bundle and Visual Studio; see https://nmap.org/book/inst-windows.html")
+        print(f"Using installed Windows Nmap runtime: {installed}", flush=True)
+        return
+    run("./configure", "--without-zenmap", "--without-nping", "--without-ndiff", cwd=source)
+    run("make", "-j2", cwd=source)
+    destination = ROOT / "tools/bin/nmap"
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(built, destination)
+    shutil.copy2(source / "nmap", destination)
 
 
 COMPONENTS = {

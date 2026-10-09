@@ -32,8 +32,9 @@ def repositories() -> list[dict[str, str]]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Clone or verify pinned scanner sources")
     parser.add_argument("--verify", action="store_true", help="Check local sources without cloning or changing files")
+    parser.add_argument("--path", action="append", choices=sorted(LOCK), help="Limit cloning or verification to this configured source path; may be repeated")
     args = parser.parse_args()
-    entries = repositories()
+    entries = [item for item in repositories() if not args.path or item["path"] in args.path]
     failures = []
     for item in entries:
         destination = ROOT / item["path"]

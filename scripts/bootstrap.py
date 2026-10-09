@@ -43,7 +43,9 @@ def main() -> int:
         for command, reason in (("git", "scanner source cloning"), ("go", "Go scanner builds"), ("java", "the application scanner"), ("ruby", "the technology profiler"), ("gem", "Ruby dependencies"), ("uv", "Python scanner runtimes")):
             require(command, reason)
         if os.name == "nt":
-            require("msbuild", "the native Nmap build; install Visual Studio Build Tools and the Npcap SDK")
+            override = os.getenv("PROJECTN_SCANNER_PORTS")
+            if not shutil.which("nmap") and not (override and Path(override).expanduser().is_file()):
+                raise RuntimeError("Install the official Windows Nmap release and add nmap.exe to PATH, or set PROJECTN_SCANNER_PORTS to its executable before --with-scanners. Windows source compilation additionally needs nmap-mswin32-aux and Visual Studio.")
         else:
             for command in ("make", "cc"):
                 require(command, "the native Nmap build")

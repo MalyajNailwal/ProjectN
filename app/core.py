@@ -102,6 +102,8 @@ def executable_for(spec: dict) -> str | None:
         return shutil.which("ruby")
     if spec["id"] == "application":
         return shutil.which("java")
+    if spec["id"] == "ports" and os.name == "nt":
+        return shutil.which("nmap")
     suffix = ".exe" if os.name == "nt" else ""
     if spec["id"] == "static":
         environment_bin = ROOT / "tools" / "venvs" / "static-analyzer" / ("Scripts" if os.name == "nt" else "bin") / ("semgrep" + suffix)
@@ -205,7 +207,7 @@ def readiness(spec: dict) -> dict:
                     digest.update(chunk)
         rules_revision = digest.hexdigest()
         rules_dirty = False
-    return {"id": spec["id"], "label": spec["label"], "ready": not missing, "source_present": (source / ".git").exists(), "source_revision": revision, "source_version": source_version, "runtime_version": runtime_version, "runtime_origin": "version-matched local package" if spec["id"] in {"static", "browser", "journeys", "accessibility", "performance"} else "local source build or source script", "rules_revision": rules_revision, "rules_dirty": rules_dirty, "executable": executable, "runtime": runtime, "limitations": missing, "resolution": "Build the cloned scanner and its required add-ons, then refresh scanner setup." if spec["id"] == "application" and missing else "Build a runtime matching the cloned source version and refresh scanner setup." if source_version and missing else "Clone the source repository, install its dependencies, build its executable into tools/bin or set PROJECTN_SCANNER_" + spec["id"].upper() + " to the local build path." if missing else None}
+    return {"id": spec["id"], "label": spec["label"], "ready": not missing, "source_present": (source / ".git").exists(), "source_revision": revision, "source_version": source_version, "runtime_version": runtime_version, "runtime_origin": "Windows Nmap executable" if spec["id"] == "ports" and os.name == "nt" else "version-matched local package" if spec["id"] in {"static", "browser", "journeys", "accessibility", "performance"} else "local source build or source script", "rules_revision": rules_revision, "rules_dirty": rules_dirty, "executable": executable, "runtime": runtime, "limitations": missing, "resolution": "Install official Nmap for Windows and add it to PATH or set PROJECTN_SCANNER_PORTS; the source checkout is kept separately." if spec["id"] == "ports" and os.name == "nt" and missing else "Build the cloned scanner and its required add-ons, then refresh scanner setup." if spec["id"] == "application" and missing else "Build a runtime matching the cloned source version and refresh scanner setup." if source_version and missing else "Clone the source repository, install its dependencies, build its executable into tools/bin or set PROJECTN_SCANNER_" + spec["id"].upper() + " to the local build path." if missing else None}
 
 
 def gap(code: str, message: str, resolution: str, scanner: str | None = None) -> dict:

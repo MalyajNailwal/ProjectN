@@ -24,7 +24,12 @@ jobs:
           node-version: '22'
       - name: Bootstrap app and dashboard from clone
         run: python scripts/bootstrap.py
+      - name: Clone and prepare a real scanner source
+        run: |
+          python scripts/clone_sources.py --path tools/web/technology-profiler/source
+          python scripts/setup_native.py technology
+          python scripts/clone_sources.py --verify --path tools/web/technology-profiler/source
       - name: Verify scanner setup entry point
         run: python scripts/setup_native.py --help
       - name: Run tests and start the app
-        run: python scripts/verify_native.py
+        run: python scripts/verify_native.py --require-stage technology
