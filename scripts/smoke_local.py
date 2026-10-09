@@ -3,15 +3,59 @@
 from __future__ import annotations
 
 import json
+import functools
+import http.server
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+class FixtureHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *args: object) -> None:
+        pass
+
+
+class FixtureServer(http.server.ThreadingHTTPServer):
+    def handle_error(self, *args: object) -> None:
+        pass
+
+
+def scan_fixture(base: str) -> None:
+    site = ROOT / "tests/fixtures/site"
+    handler = functools.partial(FixtureHandler, directory=str(site))
+    server = FixtureServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        target = f"http://127.0.0.1:{server.server_port}/"
+        request = urllib.request.Request(base + "/api/scans", data=json.dumps({"url": target, "profile": "standard"}).encode(), headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(request, timeout=5) as response:
+            scan_id = json.load(response)["id"]
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            with urllib.request.urlopen(base + f"/api/scans/{scan_id}", timeout=5) as response:
+                scan = json.load(response)
+            if scan["status"] == "completed":
+                report = scan["result"]
+                if not report or not report.get("stages") or report["target"].get("url") != target:
+                    raise RuntimeError("Fixture scan completed without a usable report")
+                print(f"Fixture website scan passed: {len(report['stages'])} stages")
+                return
+            if scan["status"] == "failed":
+                raise RuntimeError("Fixture website scan failed")
+            time.sleep(0.25)
+        raise RuntimeError("Fixture website scan did not finish within 180 seconds")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def main() -> int:
@@ -41,6 +85,7 @@ def main() -> int:
                 if health.get("status") != "ok" or "ProjectN" not in page or not isinstance(scanners, list):
                     raise RuntimeError("App returned an incomplete health, dashboard, or scanner response")
                 print(f"Native app smoke passed: dashboard, health, and {len(scanners)} scanner status entries")
+                scan_fixture(base)
                 return 0
             except (urllib.error.URLError, TimeoutError):
                 time.sleep(0.25)
