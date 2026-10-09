@@ -1,0 +1,7 @@
+{
+  "addons": [
+    "commonlib", "database", "oast", "callhome", "network", "pscan",
+    "reports", "selenium", "spider", "spiderAjax", "quickstart",
+    "pscanrules", "ascanrules"
+  ]
+}

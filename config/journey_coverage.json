@@ -1,0 +1,8 @@
+{
+  "required": [
+    {"id": "signup", "message": "Signup behavior was not tested."},
+    {"id": "login", "message": "Login behavior was not tested."},
+    {"id": "password_reset", "message": "Password-reset behavior was not tested."},
+    {"id": "authorization", "message": "Role-specific authorization behavior was not tested."}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "journeys": [
+    {
+      "name": "Authorized test account login",
+      "covers": ["login"],
+      "steps": [
+        {"action": "goto", "url": "/login"},
+        {"action": "fill", "selector": "input[name=email]", "value_env": "PROJECTN_TEST_EMAIL"},
+        {"action": "fill", "selector": "input[name=password]", "value_env": "PROJECTN_TEST_PASSWORD"},
+        {"action": "click", "selector": "button[type=submit]"},
+        {"action": "expect_url_contains", "text": "/dashboard"},
+        {"action": "expect_cookie_flags", "cookie": "session", "required": ["secure", "httpOnly", "sameSite"]}
+      ]
+    }
+  ]
+}

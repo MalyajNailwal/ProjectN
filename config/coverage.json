@@ -1,0 +1,19 @@
+{
+  "website": [
+    {"stage": "application", "message": "Application-scanner checks were not run.", "resolution": "Build and integrate the local application-scanner core and add-ons, then rerun the authorized site scan."},
+    {"stage": "browser", "message": "JavaScript-rendered routes and forms were not inventoried.", "resolution": "Choose Full scan and configure the local browser runtime, then rerun scoped page discovery."},
+    {"stage": "journeys", "message": "Signup, login, password reset, and role-specific journeys were not tested.", "resolution": "Provide controlled test accounts through environment variables and an authorized journey JSON file, then rerun those flows."},
+    {"stage": "api_spec", "message": "An API contract was not compared with observed traffic.", "resolution": "Supply a local OpenAPI JSON or YAML file for this website; add controlled authenticated journeys to observe protected routes."},
+    {"stage": "tls", "message": "The HTTPS certificate and negotiated TLS connection were not inspected.", "resolution": "Scan the HTTPS origin and ensure its certificate is accessible."},
+    {"stage": "tls_config", "message": "Older TLS protocols and accepted cipher suites were not enumerated.", "resolution": "Choose Full scan for an authorized HTTPS endpoint with the local Nmap NSE script ready."},
+    {"stage": "accessibility", "message": "Accessibility checks were not run on rendered pages.", "resolution": "Build the local accessibility script and run Full scan."},
+    {"stage": "performance", "message": "Performance and Lighthouse quality checks were not run.", "resolution": "Build the local performance adapter and rerun the page-level assessment."}
+  ],
+  "code": [
+    {"stage": "dependencies", "message": "Dependency and lockfile vulnerabilities were not assessed.", "resolution": "Build the local dependency-risk scanner and rerun the source assessment."}
+  ],
+  "deep_profile_limits": [
+    {"code": "oob_checks_disabled", "message": "Out-of-band template checks were excluded from this local profile.", "resolution": "Configure a reachable callback service and an explicit OOB-enabled profile before rerunning those checks."},
+    {"code": "intrusive_templates_excluded", "message": "Templates tagged dos, fuzz, or bruteforce were excluded.", "resolution": "Review those template families and select a separate authorized test profile if they are required."}
+  ]
+}

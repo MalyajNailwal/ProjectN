@@ -1,0 +1,8 @@
+{
+  "port_range": "1-65535",
+  "crawl_depth": 20,
+  "crawl_duration_minutes": 120,
+  "template_rate": 10,
+  "inventory_limit": 10000,
+  "browser_page_limit": 50
+}

@@ -1,0 +1,12 @@
+openapi: 3.0.0
+info:
+  title: ProjectN local fixture
+  version: 1.0.0
+servers:
+  - url: /
+paths:
+  /api/health:
+    get:
+      responses:
+        "200":
+          description: Local fixture response

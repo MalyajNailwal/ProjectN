@@ -1,0 +1,13 @@
+{
+  "timeout_seconds": 15,
+  "certificate_expiry_warning_days": 30,
+  "max_body_bytes": 524288,
+  "max_links": 500,
+  "user_agent": "ProjectN local assessment/0.1",
+  "security_headers": [
+    {"name": "content-security-policy", "content_types": ["text/html"], "title": "Content Security Policy is absent", "remediation": "Define a Content Security Policy for this application, test it in report-only mode, then enforce it and rescan."},
+    {"name": "x-content-type-options", "title": "MIME sniffing protection is absent", "remediation": "Return X-Content-Type-Options: nosniff on relevant responses, then rescan."},
+    {"name": "referrer-policy", "content_types": ["text/html"], "title": "Referrer Policy is absent", "remediation": "Set a Referrer-Policy suited to the application's navigation needs, then rescan."}
+  ],
+  "https_header": {"name": "strict-transport-security", "title": "HTTP Strict Transport Security is absent", "remediation": "After confirming HTTPS works across the intended domain scope, add a suitable Strict-Transport-Security header and rescan."}
+}

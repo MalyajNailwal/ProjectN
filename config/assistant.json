@@ -1,0 +1,10 @@
+{
+  "default_provider": "openrouter",
+  "ollama_endpoint": "http://127.0.0.1:11434/api/generate",
+  "openrouter_endpoint": "https://openrouter.ai/api/v1/chat/completions",
+  "openrouter_model": "openrouter/free",
+  "require_zero_retention": true,
+  "timeout_seconds": 90,
+  "max_output_tokens": 600,
+  "allowed_scanners": ["surface", "tls", "tls_config", "dependencies", "performance", "journeys"]
+}

@@ -1,0 +1,5 @@
+{
+  "timeout_seconds": 900,
+  "minimum_accepted_protocol": "TLSv1.2",
+  "weak_cipher_grades": ["C", "D", "E", "F"]
+}

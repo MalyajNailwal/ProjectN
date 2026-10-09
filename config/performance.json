@@ -1,0 +1,5 @@
+{
+  "categories": ["performance", "best-practices", "seo"],
+  "minimum_audit_score": 0.9,
+  "max_findings": 100
+}

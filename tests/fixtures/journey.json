@@ -1,0 +1,13 @@
+{
+  "journeys": [
+    {
+      "name": "Scoped fixture",
+      "covers": [],
+      "steps": [
+        {"action": "goto", "url": "/"},
+        {"action": "fill", "selector": "input[name=username]", "value_env": "PROJECTN_FIXTURE_USER"},
+        {"action": "expect_text", "text": "Scanner fixture"}
+      ]
+    }
+  ]
+}
