@@ -60,6 +60,7 @@ def main() -> int:
     if options.with_scanners:
         run(str(PYTHON), str(ROOT / "scripts/clone_sources.py"))
         run(str(PYTHON), str(ROOT / "scripts/setup_native.py"), "all")
+        run(str(PYTHON), str(ROOT / "scripts/doctor.py"), "--strict")
     print("\nProjectN is ready to start:", flush=True)
     print(f"  {PYTHON} {ROOT / 'scripts/run_local.py'}", flush=True)
     if not options.with_scanners:
