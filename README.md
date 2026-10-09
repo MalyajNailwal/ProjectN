@@ -60,6 +60,7 @@ Only scan websites and networks you are authorized to assess. A public GitHub re
 
 - [Five-minute reviewer demo](docs/reviewer-demo.md)
 - [Contributing](CONTRIBUTING.md)
+- [Security reporting](SECURITY.md)
 - [ProjectN license](LICENSE) and [third-party licenses](THIRD_PARTY.md)
 - [Scan architecture and coverage contract](docs/scan-architecture.md)
 - [Product research](docs/product-research.md)

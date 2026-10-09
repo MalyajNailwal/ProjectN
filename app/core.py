@@ -139,6 +139,15 @@ def readiness(spec: dict) -> dict:
         missing.append("locally built accessibility script is missing")
     source_version = None
     runtime_version = None
+    if spec["id"] == "ports" and executable:
+        try:
+            check = subprocess.run([executable, "-version"], capture_output=True, text=True, timeout=10, shell=False)
+            match = re.search(r"Nmap version ([^\s]+)", check.stdout) if check.returncode == 0 else None
+        except (OSError, subprocess.TimeoutExpired):
+            match = None
+        runtime_version = match.group(1) if match else None
+        if runtime_version is None:
+            missing.append("Nmap executable did not return a version")
     if spec["id"] == "static":
         source_version = tomllib.loads((source / "cli/pyproject.toml").read_text())["project"]["version"] if (source / "cli/pyproject.toml").is_file() else None
         python = ROOT / "tools/venvs/static-analyzer" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")

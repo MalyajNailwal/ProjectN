@@ -19,4 +19,4 @@ On Windows PowerShell, replace `.venv/bin/python` with `.\.venv\Scripts\python.e
 
 Do not commit `tools/`, `.venv/`, `web/node_modules/`, `web/dist/`, `data/`, API keys, customer scan reports, or scanner output. Put scanner paths, arguments, and timeouts in `config/scanners.json`; keep source revisions in `config/source-lock.json`. Add focused tests for changed behavior and document observable coverage limits.
 
-If you find a security issue in ProjectN itself, contact the maintainer privately before opening a public issue. Only scan targets you are authorized to assess.
+For a security issue in ProjectN itself, follow [SECURITY.md](SECURITY.md). Only scan targets you are authorized to assess.
