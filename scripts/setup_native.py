@@ -21,7 +21,8 @@ APPLICATION = json.loads((ROOT / "config/application_scan.json").read_text())
 
 def run(*command: str, cwd: Path = ROOT) -> None:
     print("Running:", " ".join(command), flush=True)
-    subprocess.run(list(command), cwd=cwd, check=True, shell=False)
+    executable = shutil.which(command[0]) or command[0]
+    subprocess.run([executable, *command[1:]], cwd=cwd, check=True, shell=False)
 
 
 def environment_python(name: str) -> Path:
@@ -65,8 +66,9 @@ def install_browser() -> None:
 
 def build_application() -> None:
     base = ROOT / "tools/web/application-scanner"
-    wrapper = "gradlew.bat" if os.name == "nt" else "./gradlew"
+    wrapper = str(base / "core" / ("gradlew.bat" if os.name == "nt" else "gradlew"))
     run(wrapper, ":zap:distCore", "--no-daemon", cwd=base / "core")
+    wrapper = str(base / "add-ons" / ("gradlew.bat" if os.name == "nt" else "gradlew"))
     tasks = [f":addOns:{name}:jarZapAddOn" for name in APPLICATION["addons"]]
     run(wrapper, *tasks, "--no-daemon", cwd=base / "add-ons")
     run(sys.executable, str(ROOT / "scripts/prepare_application_scanner.py"))

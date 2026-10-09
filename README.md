@@ -2,6 +2,30 @@
 
 Local security assessment workstation for macOS and Windows. The dashboard accepts a website URL, a local code folder, or a public GitHub repository URL. Scanner source repositories live under purpose-based folders in `tools/`; the application runs their local executables and records incomplete coverage as scan limitations.
 
+## Quick start from a GitHub clone
+
+Install Python 3.11+ and Node.js 22.19+ (or 24+) first. These commands work from the repository root and install the app plus dashboard. They do not download the large scanner runtimes.
+
+macOS Terminal:
+
+```sh
+git clone https://github.com/MalyajNailwal/ProjectN.git
+cd ProjectN
+python3 scripts/bootstrap.py
+.venv/bin/python scripts/run_local.py
+```
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/MalyajNailwal/ProjectN.git
+cd ProjectN
+py -3 scripts/bootstrap.py
+.\.venv\Scripts\python.exe scripts\run_local.py
+```
+
+Open `http://127.0.0.1:8000`. A fork uses the same commands with its own clone URL. The dashboard and built-in HTTP/TLS checks can run after this setup; `/api/scanners` lists which external scanners still need installation. To download all pinned scanner sources and build/install their runtimes, first install the Go, Java, Ruby, uv, and native build prerequisites below, then run `python3 scripts/bootstrap.py --with-scanners` on macOS or `py -3 scripts/bootstrap.py --with-scanners` on Windows. This step is large and Windows Nmap additionally requires Visual Studio Build Tools and the Npcap SDK. Run `python scripts/smoke_local.py` with the environment's Python to check the dashboard and API.
+
 ## Current status
 
 The FastAPI API, SQLite scan history, React dashboard, source cloning, adapters, JSON export, and scan comparison are implemented. All 16 configured upstream source repositories are present locally. On this Mac, all 12 configured scanner capabilities show ready: WhatWeb, Nuclei, Nmap, Katana, Playwright rendered discovery, Playwright configured journeys, ZAP with source-built add-ons, axe, Lighthouse, Semgrep, Gitleaks, and OSV-Scanner. Nuclei, Nmap, Katana, Gitleaks, OSV-Scanner, ZAP core, and ZAP add-ons were built from cloned source. WhatWeb runs its cloned Ruby source. Playwright, Semgrep, axe, and Lighthouse use local released runtimes whose versions are checked against their cloned sources; their source repositories remain available for inspection and modification. The axe source dependency install and Lighthouse source lockfile install hit upstream network errors, so their matching releases were used for runtime verification.
@@ -12,23 +36,13 @@ The report records observed evidence, remediation guidance, source/rules revisio
 
 Remaining coverage is reported per scan: out-of-band checks need a reachable callback service; website-only input cannot reveal private source or authenticated pages; and an account journey needs controlled test accounts. Optional AI remediation drafts need an explicitly configured provider and never replace scanner evidence or deterministic fix guidance. Full TLS enumeration runs only for an authorized HTTPS Full scan. OSV vulnerability matching may query its advisory service unless configured for offline use. Native Windows execution is prepared by the setup script and a macOS/Windows smoke workflow in `.github/workflows/native-smoke.yml`. The workflow verifies app dependencies, native paths, Python tests, and the dashboard build on both operating systems. Full scanner builds and runtime behavior still need verification on a Windows machine.
 
-## Run locally
+## Full scanner setup
 
-Requires Python 3.11+, Node.js 22.19+ or 24+, Git, Go, Java 17+, Ruby, uv, and the scanner-specific native toolchains. Windows Nmap source compilation needs a suitable Visual Studio/MSBuild and Npcap SDK setup. Docker and Supabase are not required.
+The quick start above prepares the app and dashboard. External scanner setup also requires Git, Go, Java 17+, Ruby, uv, and scanner-specific native toolchains. On Windows, Nmap compilation needs Visual Studio Build Tools/MSBuild and the Npcap SDK; on macOS it needs a C compiler and Make. Docker and Supabase are not required.
 
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e .
-python3 scripts/clone_sources.py
-python3 scripts/setup_native.py all
-cd web
-npm install
-npm run build
-cd ..
-.venv/bin/python scripts/run_local.py
-```
+Run `python3 scripts/bootstrap.py --with-scanners` on macOS or `py -3 scripts/bootstrap.py --with-scanners` on Windows after installing those prerequisites. The script downloads the 16 pinned upstream source repositories and builds or installs the 12 scanner capabilities. This can require several gigabytes and substantial setup time. Check `/api/scanners` for each scanner's actual readiness; the macOS and Windows CI jobs verify fresh app setup, tests, dashboard, and API startup, but do not compile every scanner. Full native scanner builds on Windows still need verification on a Windows machine.
 
-Open `http://127.0.0.1:8000`. On Windows, use `.venv\Scripts\python.exe` and `python scripts/setup_native.py all --clone` from a suitable developer shell. `scripts/setup_native.py` also accepts individual components (`go`, `callback`, `semgrep`, `browser`, `application`, `accessibility`, `performance`, `technology`, `nmap`). The source clone script checks existing repositories against `config/source-lock.json` and fetches the pinned revision for new clones. It reports a mismatch instead of changing an existing checkout. Run `python scripts/clone_sources.py --verify` to check local commits and origin URLs without network access. `scripts/run_local.py` accepts `--port` and defaults to loopback binding on both platforms.
+`scripts/setup_native.py` also accepts individual components (`go`, `callback`, `semgrep`, `browser`, `application`, `accessibility`, `performance`, `technology`, `nmap`). The source clone script checks existing repositories against `config/source-lock.json` and fetches the pinned revision for new clones. It reports a mismatch instead of changing an existing checkout. Run `python scripts/clone_sources.py --verify` to check local commits and origin URLs without network access. `scripts/run_local.py` accepts `--port` and defaults to loopback binding on both platforms.
 
 Scanner source paths, expected executable names, and CLI arguments are in `config/scanners.json`. Native executable files go in `tools/bin/` (`.exe` on Windows). `PROJECTN_SCANNER_<ID>` can point to a custom local executable for a scanner. `/api/scanners` shows setup status and the resolution for missing components.
 
@@ -44,5 +58,7 @@ Only scan websites and networks you are authorized to assess. A public GitHub re
 
 ## Documentation
 
+- [Five-minute reviewer demo](docs/reviewer-demo.md)
+- [Contributing](CONTRIBUTING.md)
 - [Scan architecture and coverage contract](docs/scan-architecture.md)
 - [Product research](docs/product-research.md)
