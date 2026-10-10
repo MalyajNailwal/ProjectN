@@ -1,0 +1,45 @@
+rules:
+  - id: client-role-check-only
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      A role check ($USER.role) runs inside client-side rendering code ($COMPONENT). If this is
+      the only place the role is checked, a user can bypass it by calling the underlying API
+      directly or editing the client bundle; it is a UI convenience, not an access control.
+    metadata:
+      category: security
+      cwe: "CWE-602: Client-Side Enforcement of Server-Side Security"
+      fix: >-
+        Enforce the same role check on the server (API route, server action, or middleware)
+        before the protected data or action is reachable. Keep the client-side check only for
+        hiding UI elements, not as the security boundary.
+    patterns:
+      - pattern-either:
+          - pattern: 'if ($USER.role === "$ROLE") { ... }'
+          - pattern: 'if ($USER.$FIELD.role === "$ROLE") { ... }'
+      - pattern-inside: 'function $COMPONENT(...) { ... }'
+      - metavariable-regex:
+          metavariable: $COMPONENT
+          regex: ^[A-Z]
+
+  - id: idor-identity-from-request
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      The record owner ($REQ.$A.$X) used to scope this database query comes from client-supplied
+      request data, not the authenticated session. An attacker can change this value to read or
+      modify another user's data (Insecure Direct Object Reference).
+    metadata:
+      category: security
+      cwe: "CWE-639: Authorization Bypass Through User-Controlled Key"
+      fix: >-
+        Scope the query using the user id from the verified session (e.g. the decoded auth
+        token), never from the request body, query string, or URL parameters.
+    patterns:
+      - pattern-either:
+          - pattern: '$DB.$METHOD({ where: { ..., userId: $REQ.body.$X, ... } })'
+          - pattern: '$DB.$METHOD({ where: { ..., userId: $REQ.query.$X, ... } })'
+          - pattern: '$DB.$METHOD({ where: { ..., userId: $REQ.params.$X, ... } })'
+      - metavariable-regex:
+          metavariable: $REQ
+          regex: ^(req|request)$

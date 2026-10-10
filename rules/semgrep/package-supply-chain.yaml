@@ -1,0 +1,36 @@
+rules:
+  - id: install-script-present
+    languages: [json]
+    severity: WARNING
+    paths:
+      include:
+        - "**/package.json"
+    message: >-
+      This package.json declares a preinstall or postinstall script, which runs automatically on
+      every `npm install` with no prompt. This is a common supply-chain malware vector.
+    metadata:
+      category: security
+      cwe: "CWE-494: Download of Code Without Integrity Check"
+      fix: >-
+        Review exactly what the script runs. Remove it if it is not required, or pin and audit
+        it; consider `npm install --ignore-scripts` in CI if nothing here legitimately needs it.
+    pattern-regex: '"(pre|post)install"\s*:'
+
+  - id: loose-version-range
+    languages: [json]
+    severity: INFO
+    paths:
+      include:
+        - "**/package.json"
+    message: >-
+      A dependency is pinned with a loose version range (`^`, `~`, or `*`). A future publish of
+      that package name, including one from a hijacked maintainer account or a slopsquatted
+      name, installs automatically on the next install with no review.
+    metadata:
+      category: security
+      cwe: "CWE-1104: Use of Unmaintained Third Party Components"
+      fix: >-
+        Pin dependencies to an exact version and update deliberately (`npm install --save-exact`
+        or a lockfile-only install in CI), especially for packages with low download counts or a
+        name close to a popular package.
+    pattern-regex: '"[a-zA-Z0-9@_./-]+"\s*:\s*"[~^*]'

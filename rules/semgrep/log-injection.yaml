@@ -1,0 +1,55 @@
+rules:
+  - id: log-injection-from-request
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      Request-derived data ($REQ.$A) is written into a log message without sanitization. An
+      attacker can inject newlines or fake entries to forge log lines, or break a log parser
+      that other tooling relies on.
+    metadata:
+      category: security
+      cwe: "CWE-117: Improper Output Neutralization for Logs"
+      fix: >-
+        Sanitize or JSON-encode the value before logging (strip newlines and control characters),
+        or log it as a separate structured field instead of interpolating it into the message text.
+    patterns:
+      - pattern-either:
+          - pattern: 'console.log(`...${$REQ.$A.$B}...`)'
+          - pattern: 'console.log("..." + $REQ.$A.$B + "...")'
+          - pattern: '$LOGGER.info(`...${$REQ.$A.$B}...`)'
+          - pattern: '$LOGGER.warn(`...${$REQ.$A.$B}...`)'
+          - pattern: '$LOGGER.error(`...${$REQ.$A.$B}...`)'
+      - metavariable-regex:
+          metavariable: $REQ
+          regex: ^(req|request)$
+      - metavariable-regex:
+          metavariable: $A
+          regex: ^(body|query|params|headers)$
+
+  - id: log-injection-from-request-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Request-derived data ($REQ.$A) is written into a log message without sanitization. An
+      attacker can inject newlines or fake entries to forge log lines, or break a log parser
+      that other tooling relies on.
+    metadata:
+      category: security
+      cwe: "CWE-117: Improper Output Neutralization for Logs"
+      fix: >-
+        Sanitize the value before logging (strip newlines and control characters), or pass it as
+        a separate structured logging field (e.g. `logger.info("...", extra={...})`) instead of
+        interpolating it into the message text.
+    patterns:
+      - pattern-either:
+          - pattern: 'logging.info(f"...{$REQ.$A[$X]}...")'
+          - pattern: '$LOGGER.info(f"...{$REQ.$A[$X]}...")'
+          - pattern: '$LOGGER.warning(f"...{$REQ.$A[$X]}...")'
+          - pattern: '$LOGGER.error(f"...{$REQ.$A[$X]}...")'
+          - pattern: 'print(f"...{$REQ.$A[$X]}...")'
+      - metavariable-regex:
+          metavariable: $REQ
+          regex: ^(request|req)$
+      - metavariable-regex:
+          metavariable: $A
+          regex: ^(form|args|json|headers|values)$

@@ -105,6 +105,54 @@ class OwnRulesTests(unittest.TestCase):
                 server.server_close()
             self.assertEqual(clean.stdout.strip(), "", f"matched a page with no keys: {clean.stdout}")
 
+    def test_semgrep_rules_flag_log_injection_access_control_and_loose_dependencies(self):
+        semgrep = scanner("static")
+        if not semgrep:
+            self.skipTest("source-analysis runtime is not installed")
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp)
+            (source / "client.tsx").write_text(
+                "console.log(`Login attempt for user ${req.body.username}`)\n"
+                "logger.info(`Processing order ${req.query.orderId}`)\n"
+                "console.log(\"safe literal only\")\n"
+                "\n"
+                "function AdminPanel() {\n"
+                "  if (user.role === \"admin\") {\n"
+                "    return <Dashboard />\n"
+                "  }\n"
+                "}\n"
+                "\n"
+                "const order = await db.order.findFirst({ where: { id: orderId, userId: req.body.userId } })\n"
+                "const safeOrder = await db.order.findFirst({ where: { id: orderId, userId: session.user.id } })\n"
+            )
+            (source / "server.py").write_text(
+                "import logging\n"
+                "logging.info(f\"User {request.form['username']} not found\")\n"
+                "logger.error(f\"Order failed: {request.args['id']}\")\n"
+                "print(\"safe literal\")\n"
+                "logging.info(\"also safe, no interpolation\")\n"
+            )
+            (source / "package.json").write_text(json.dumps({
+                "name": "demo",
+                "scripts": {"postinstall": "node setup.js"},
+                "dependencies": {"left-pad": "^1.3.0", "express": "4.18.2", "lodash": "~4.17.21", "react": "18.2.0"},
+            }, indent=1))
+            output = source / "result.json"
+            subprocess.run([semgrep, "scan", "--metrics=off", "--config", str(ROOT / "rules/semgrep"), "--json", "--output", str(output), str(source)], capture_output=True, timeout=300, check=False)
+            results = json.loads(output.read_text())["results"]
+        hits = sorted((row["check_id"].rsplit(".", 1)[-1], Path(row["path"]).name, row["start"]["line"]) for row in results)
+        self.assertEqual(hits, [
+            ("client-role-check-only", "client.tsx", 6),
+            ("idor-identity-from-request", "client.tsx", 11),
+            ("install-script-present", "package.json", 4),
+            ("log-injection-from-request", "client.tsx", 1),
+            ("log-injection-from-request", "client.tsx", 2),
+            ("log-injection-from-request-python", "server.py", 2),
+            ("log-injection-from-request-python", "server.py", 3),
+            ("loose-version-range", "package.json", 7),
+            ("loose-version-range", "package.json", 9),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

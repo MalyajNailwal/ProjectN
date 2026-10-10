@@ -13,6 +13,9 @@ Current checks:
 - `semgrep/browser-secrets.yaml` → `supabase-service-role-key`: a Supabase JWT with the `service_role` claim written in a file.
 - `nuclei/supabase-service-role-key-exposed.yaml`: the same key in a page or its first same-origin script.
 - `nuclei/client-side-api-keys-exposed.yaml`: a secret OpenAI, Anthropic, Stripe, or AWS key in a page or its first same-origin script (the same patterns Gitleaks already uses for source code, applied to the live site so a URL-only scan catches it too).
+- `semgrep/log-injection.yaml`: request data (`req.body`/`request.form`, etc.) interpolated straight into a log line, in JavaScript/TypeScript and Python.
+- `semgrep/access-control.yaml` → `client-role-check-only`: a role check that only runs in client-side rendering code. → `idor-identity-from-request`: a database query scoped by a user id taken from the request instead of the session.
+- `semgrep/package-supply-chain.yaml` → `install-script-present`: a `package.json` with a pre/postinstall script. → `loose-version-range`: a dependency pinned with `^`, `~`, or `*` instead of an exact version.
 
 ## Add a check
 
