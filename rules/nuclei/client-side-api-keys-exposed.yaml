@@ -1,0 +1,82 @@
+id: client-side-api-keys-exposed
+
+info:
+  name: Secret API key exposed to browsers
+  author: ProjectN
+  severity: critical
+  description: >-
+    The page or its first same-origin script contains a secret API key for OpenAI, Anthropic, Stripe, or AWS.
+    A common mistake in quickly assembled apps is calling these providers directly from client-side code, which
+    ships the secret key to every visitor's browser.
+  remediation: >-
+    Remove the key from client code, call the provider only from a server-side route or function using the key
+    from server-side secret storage, and rotate the key because it was already shipped to browsers.
+  reference:
+    - https://platform.openai.com/docs/guides/safety-best-practices
+    - https://docs.stripe.com/keys#safe-keys
+  tags: exposure,secret,projectn
+
+# Patterns match Gitleaks' own definitions for these rule IDs (tools/code/secret-detector/source/config/gitleaks.toml),
+# kept in sync so a key reported here from the live site and one reported from source code use the same shape.
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+    extractors:
+      - type: regex
+        name: script
+        part: body
+        internal: true
+        group: 1
+        regex:
+          - '<script[^>]+src="(/[^"/][^"]*\.js)"'
+    matchers-condition: or
+    matchers:
+      - type: regex
+        name: openai-api-key
+        part: body
+        regex:
+          - 'sk-[a-zA-Z0-9]{20}T3BlbkFJ[a-zA-Z0-9]{20}'
+          - 'sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{58,74}T3BlbkFJ[A-Za-z0-9_-]{58,74}'
+      - type: regex
+        name: anthropic-api-key
+        part: body
+        regex:
+          - 'sk-ant-api03-[a-zA-Z0-9_-]{93}AA'
+      - type: regex
+        name: stripe-secret-key
+        part: body
+        regex:
+          - '(?:sk|rk)_(?:test|live|prod)_[a-zA-Z0-9]{10,99}'
+      - type: regex
+        name: aws-access-key
+        part: body
+        regex:
+          - '(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z2-7]{16}'
+
+  - method: GET
+    path:
+      - "{{RootURL}}{{script}}"
+    matchers-condition: or
+    matchers:
+      - type: regex
+        name: openai-api-key
+        part: body
+        regex:
+          - 'sk-[a-zA-Z0-9]{20}T3BlbkFJ[a-zA-Z0-9]{20}'
+          - 'sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{58,74}T3BlbkFJ[A-Za-z0-9_-]{58,74}'
+      - type: regex
+        name: anthropic-api-key
+        part: body
+        regex:
+          - 'sk-ant-api03-[a-zA-Z0-9_-]{93}AA'
+      - type: regex
+        name: stripe-secret-key
+        part: body
+        regex:
+          - '(?:sk|rk)_(?:test|live|prod)_[a-zA-Z0-9]{10,99}'
+      - type: regex
+        name: aws-access-key
+        part: body
+        regex:
+          - '(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z2-7]{16}'

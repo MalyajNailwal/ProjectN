@@ -69,6 +69,42 @@ class OwnRulesTests(unittest.TestCase):
                 matched = "supabase-service-role-key-exposed" in result.stdout
                 self.assertEqual(matched, expected, result.stdout + result.stderr[-500:])
 
+    def test_nuclei_template_finds_client_side_api_keys(self):
+        nuclei = scanner("templates")
+        if not nuclei:
+            self.skipTest("template-scanner runtime is not installed")
+        # Synthetic, pattern-shaped values built at test time; none of these are real credentials.
+        keys = {
+            "openai-api-key": "sk-" + "a" * 20 + "T3BlbkFJ" + "b" * 20,
+            "anthropic-api-key": "sk-ant-api03-" + "c" * 93 + "AA",
+            "stripe-secret-key": "sk_test_" + "d" * 24,
+            "aws-access-key": "AKIA" + "E" * 16,
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            site = Path(temp)
+            (site / "assets").mkdir()
+            (site / "index.html").write_text('<!doctype html><script type="module" src="/assets/app.js"></script>')
+            (site / "assets/app.js").write_text("\n".join(f"const {name.replace('-', '_')} = '{value}'" for name, value in keys.items()))
+            server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(site)))
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            try:
+                result = subprocess.run([nuclei, "-u", f"http://127.0.0.1:{server.server_port}/", "-t", str(ROOT / "rules/nuclei" / "client-side-api-keys-exposed.yaml"), "-jsonl", "-silent", "-duc", "-ni", "-nc"], capture_output=True, text=True, timeout=300, check=False)
+            finally:
+                server.shutdown()
+                server.server_close()
+            for name in keys:
+                self.assertIn(name, result.stdout, f"{name} not matched: {result.stdout}{result.stderr[-500:]}")
+
+            (site / "assets/app.js").write_text("const greeting = 'hello world'")
+            server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(site)))
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            try:
+                clean = subprocess.run([nuclei, "-u", f"http://127.0.0.1:{server.server_port}/", "-t", str(ROOT / "rules/nuclei" / "client-side-api-keys-exposed.yaml"), "-jsonl", "-silent", "-duc", "-ni", "-nc"], capture_output=True, text=True, timeout=300, check=False)
+            finally:
+                server.shutdown()
+                server.server_close()
+            self.assertEqual(clean.stdout.strip(), "", f"matched a page with no keys: {clean.stdout}")
+
 
 if __name__ == "__main__":
     unittest.main()

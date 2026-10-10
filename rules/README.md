@@ -12,6 +12,7 @@ Current checks:
 - `semgrep/browser-secrets.yaml` → `public-env-secret`: a browser-public environment variable (`NEXT_PUBLIC_`, `VITE_`, `REACT_APP_`, `EXPO_PUBLIC_`, `NUXT_PUBLIC_`, `GATSBY_`, `PUBLIC_`) whose name says it holds a secret, private key, password, or service role.
 - `semgrep/browser-secrets.yaml` → `supabase-service-role-key`: a Supabase JWT with the `service_role` claim written in a file.
 - `nuclei/supabase-service-role-key-exposed.yaml`: the same key in a page or its first same-origin script.
+- `nuclei/client-side-api-keys-exposed.yaml`: a secret OpenAI, Anthropic, Stripe, or AWS key in a page or its first same-origin script (the same patterns Gitleaks already uses for source code, applied to the live site so a URL-only scan catches it too).
 
 ## Add a check
 
