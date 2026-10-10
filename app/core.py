@@ -577,6 +577,7 @@ def response_signal_gaps(stages: list[dict]) -> list[dict]:
 
 def execute_scan(request: dict, progress, cancel=None) -> dict:
     from app.infra_probe import inspect_infrastructure
+    from app.slopsquat_probe import inspect_slopsquat
     from app.supabase_probe import inspect_supabase
     from app.web_probe import inspect_website
     from app.tls_probe import inspect_tls
@@ -619,6 +620,8 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
             steps.append({"id": "supabase", "label": "Supabase table exposure"})
         steps.append({"id": "infra", "label": "Infrastructure and stack"})
     steps += [{"id": spec["id"], "label": spec["label"]} for spec in selected]
+    if repo_url or local_path:
+        steps.append({"id": "slopsquat", "label": "Dependency name verification"})
     if api_spec_file:
         steps.append({"id": "api_spec", "label": "OpenAPI contract comparison"})
     for step in steps:
@@ -694,6 +697,11 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
             for spec in runnable:
                 begin(spec["id"], f"Running {spec['label']}")
                 record(*scan_one(spec, values, work, cancel))
+            if repo:
+                begin("slopsquat", "Verifying dependency names against their registry")
+                found, stage, issues = inspect_slopsquat(repo, cancel)
+                stage.update(source_revision=builtin_revision("app/slopsquat_probe.py", "config/slopsquat_probe.json"), rules_dirty=False)
+                record(found, stage, issues)
             if api_spec_file:
                 begin("api_spec", "Comparing OpenAPI contract with observed routes")
                 observed = []
