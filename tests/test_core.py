@@ -29,7 +29,7 @@ class TargetValidationTests(unittest.TestCase):
     def test_unreachable_oob_server_keeps_public_callback_disabled(self):
         spec = {"id": "templates", "label": "Templates", "source": "tools/web/template-scanner/engine", "args": ["-ni"], "full_args": ["-ni"], "output": "nuclei", "timeout": 5}
         ready = {"ready": True, "executable": "fixture-scanner", "source_revision": "rev", "source_version": None, "runtime_version": None, "runtime_origin": "fixture", "rules_revision": "rules", "rules_dirty": False, "runtime": None}
-        with tempfile.TemporaryDirectory() as temp, patch("app.core.readiness", return_value=ready), patch("app.core.oob_server_reachable", return_value=False), patch("app.core.subprocess.run", return_value=SimpleNamespace(returncode=0)) as command:
+        with tempfile.TemporaryDirectory() as temp, patch("app.core.readiness", return_value=ready), patch("app.core.oob_server_reachable", return_value=False), patch("app.core.run_tool", return_value=SimpleNamespace(returncode=0)) as command:
             _, stage, gaps = scan_one(spec, {"profile": "full", "oob_server": "https://callback.example.test"}, Path(temp))
         self.assertIn("-ni", command.call_args.args[0])
         self.assertEqual(stage["state"], "partial")
@@ -37,14 +37,14 @@ class TargetValidationTests(unittest.TestCase):
 
     def test_full_website_scan_requires_explicit_authorization(self):
         with self.assertRaisesRegex(ValueError, "explicit authorization"):
-            execute_scan({"url": "https://example.test", "profile": "full"}, lambda _: None)
+            execute_scan({"url": "https://example.test", "profile": "full"}, lambda *_: None)
 
     def test_journey_file_requires_full_website_scan(self):
         with tempfile.TemporaryDirectory() as temp:
             journey = Path(temp) / "journey.json"
             journey.write_text('{"journeys": []}')
             with self.assertRaisesRegex(ValueError, "Journey file requires"):
-                execute_scan({"url": "https://example.test", "profile": "standard", "journey_file": str(journey)}, lambda _: None)
+                execute_scan({"url": "https://example.test", "profile": "standard", "journey_file": str(journey)}, lambda *_: None)
 
     def test_full_scan_options_are_configurable_and_validate_ports(self):
         options = full_scan_options({"port_range": "443,8000-9000", "crawl_depth": 42})

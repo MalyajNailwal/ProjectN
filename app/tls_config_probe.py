@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.core import ROOT, finding, gap, readiness, specs
+from app.core import ROOT, finding, gap, readiness, run_tool, specs
 
 CONFIG_PATH = ROOT / "config/tls_scan.json"
 CONFIG = json.loads(CONFIG_PATH.read_text())
@@ -46,7 +46,7 @@ def parse_tls_xml(path: Path, host: str, port: int) -> tuple[list[dict], dict]:
     return found, {"versions": versions, "observed": len(versions), "script_result_present": bool(scripts)}
 
 
-def inspect_tls_config(url: str, host: str) -> tuple[list[dict], dict, list[dict]]:
+def inspect_tls_config(url: str, host: str, cancel=None) -> tuple[list[dict], dict, list[dict]]:
     label = "TLS protocol and cipher configuration"
     if urlparse(url).scheme != "https":
         return [], {"id": "tls_config", "label": label, "state": "skipped", "summary": "Target URL uses HTTP"}, [gap("tls_config_http", "TLS configuration cannot be enumerated on an HTTP origin.", "Provide the HTTPS origin if one exists.", "tls_config")]
@@ -59,7 +59,7 @@ def inspect_tls_config(url: str, host: str) -> tuple[list[dict], dict, list[dict
         output = Path(temp) / "tls.xml"
         command = [ready["executable"], "-sT", "-sV", "-Pn", "-p", str(port), "--script", "ssl-enum-ciphers", "-oX", str(output), host]
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=CONFIG["timeout_seconds"], shell=False, env={**os.environ, "NMAPDIR": str(ROOT / spec["source"])})
+            result = run_tool(command, CONFIG["timeout_seconds"], cancel, env={**os.environ, "NMAPDIR": str(ROOT / spec["source"])})
             found, details = parse_tls_xml(output, host, port) if output.is_file() else ([], {"versions": [], "observed": 0, "script_result_present": False})
         except (OSError, subprocess.TimeoutExpired, ET.ParseError, ValueError) as exc:
             return [], {"id": "tls_config", "label": label, "state": "failed", "summary": type(exc).__name__}, [gap("tls_config_failed", "TLS cipher enumeration could not be completed.", "Check target access, Nmap NSE support and the configured timeout, then retry.", "tls_config")]

@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -19,7 +20,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
+DATA = Path(os.getenv("PROJECTN_DATA_DIR") or ROOT / "data")
 CONFIG = json.loads((ROOT / "config" / "scanners.json").read_text())
 COVERAGE = json.loads((ROOT / "config" / "coverage.json").read_text())
 FULL_DEFAULTS = json.loads((ROOT / "config" / "full_scan.json").read_text())
@@ -27,6 +28,43 @@ APPLICATION_CONFIG = json.loads((ROOT / "config" / "application_scan.json").read
 JOURNEY_COVERAGE = json.loads((ROOT / "config" / "journey_coverage.json").read_text())
 PERFORMANCE_CONFIG = json.loads((ROOT / "config" / "performance.json").read_text())
 GITHUB_RE = re.compile(r"^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
+
+
+class ScanCancelled(Exception):
+    """Raised when the user stops a scan; the running scanner process tree is already terminated."""
+
+
+def stop_process_tree(process: subprocess.Popen) -> None:
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True, check=False)
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    process.kill()
+    process.wait()
+    for stream in (process.stdout, process.stderr):
+        if stream:
+            stream.close()
+
+
+def run_tool(argv: list[str], timeout: float, cancel=None, **options) -> subprocess.CompletedProcess:
+    """Run a scanner like subprocess.run, but stop its whole process tree on timeout or user cancellation."""
+    session = {} if os.name == "nt" else {"start_new_session": True}
+    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace", shell=False, **session, **options)
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            stdout, stderr = process.communicate(timeout=0.5)
+            return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+        except subprocess.TimeoutExpired:
+            if cancel is not None and cancel.is_set():
+                stop_process_tree(process)
+                raise ScanCancelled from None
+            if time.monotonic() > deadline:
+                stop_process_tree(process)
+                raise subprocess.TimeoutExpired(argv, timeout) from None
 
 
 def full_scan_options(request: dict) -> dict:
@@ -385,7 +423,7 @@ def parse_output(spec: dict, output: Path) -> tuple[list[dict], dict]:
     return [], {"observed": 0}
 
 
-def scan_one(spec: dict, values: dict, work: Path) -> tuple[list[dict], dict, list[dict]]:
+def scan_one(spec: dict, values: dict, work: Path, cancel=None) -> tuple[list[dict], dict, list[dict]]:
     ready = readiness(spec)
     if not ready["ready"]:
         return [], {"id": spec["id"], "label": spec["label"], "state": "skipped", "summary": "Scanner setup incomplete", "source_revision": ready["source_revision"], "source_version": ready["source_version"], "runtime_version": ready["runtime_version"], "runtime_origin": ready["runtime_origin"], "rules_revision": ready["rules_revision"], "rules_dirty": ready["rules_dirty"]}, [gap("scanner_unavailable", "; ".join(ready["limitations"]), ready["resolution"], spec["id"])]
@@ -417,7 +455,7 @@ def scan_one(spec: dict, values: dict, work: Path) -> tuple[list[dict], dict, li
     argv = [ready["executable"], *(part.format_map(substitutions) for part in args_template)]
     scanner_env = {**os.environ, "NMAPDIR": str(ROOT / spec["source"])} if spec["id"] == "ports" else None
     try:
-        result = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True, timeout=timeout, shell=False, env=scanner_env)
+        result = run_tool(argv, timeout, cancel, cwd=ROOT, env=scanner_env)
         findings, details = parse_output(output_spec, output)
         extra_issues = []
         if spec["id"] == "ports" and result.returncode == 0 and values.get("url"):
@@ -427,7 +465,7 @@ def scan_one(spec: dict, values: dict, work: Path) -> tuple[list[dict], dict, li
                 extra_values = {**substitutions, "port": str(target_port), "output": str(extra_output)}
                 extra_argv = [ready["executable"], *(part.format_map(extra_values) for part in spec["explicit_port_args"])]
                 try:
-                    extra = subprocess.run(extra_argv, cwd=ROOT, capture_output=True, text=True, timeout=timeout, shell=False, env=scanner_env)
+                    extra = run_tool(extra_argv, timeout, cancel, cwd=ROOT, env=scanner_env)
                     if extra.returncode == 0:
                         _, extra_details = parse_output(spec, extra_output)
                         details["ports"] = list({(item["host"], item["protocol"], item["port"]): item for item in details["ports"] + extra_details["ports"]}.values())
@@ -470,7 +508,7 @@ def scan_one(spec: dict, values: dict, work: Path) -> tuple[list[dict], dict, li
         return [], {"id": spec["id"], "label": spec["label"], "state": "failed", "summary": "Output could not be processed"}, [gap("invalid_output", f"{spec['label']}: {type(exc).__name__}", "Check scanner version and output format, then retry.", spec["id"])]
 
 
-def execute_scan(request: dict, progress) -> dict:
+def execute_scan(request: dict, progress, cancel=None) -> dict:
     from app.web_probe import inspect_website
     from app.tls_probe import inspect_tls
     from app.tls_config_probe import inspect_tls_config
@@ -502,69 +540,99 @@ def execute_scan(request: dict, progress) -> dict:
     if api_spec_file and (not url or not api_spec_file.is_file()):
         raise ValueError("API specification requires a website URL and an existing local JSON or YAML file.")
     findings, stages, limitations = [], [], []
+    profile = request.get("profile", "standard")
+    selected = [s for s in specs() if ((s["kind"] in {"web", "network"} and url) or (s["kind"] == "code" and (repo_url or local_path))) and (s["id"] != "templates" or profile in {"deep", "full"}) and (not s.get("full_only") or profile == "full") and (not s.get("requires_journey_file") or journey_file)]
+    steps = [{"id": "clone", "label": "Clone public repository"}] if repo_url else []
+    if url:
+        steps += [{"id": "surface", "label": "HTTP surface"}, {"id": "tls", "label": "TLS certificate and connection"}]
+        if profile == "full":
+            steps.append({"id": "tls_config", "label": "TLS protocol and cipher configuration"})
+    steps += [{"id": spec["id"], "label": spec["label"]} for spec in selected]
+    if api_spec_file:
+        steps.append({"id": "api_spec", "label": "OpenAPI contract comparison"})
+    for step in steps:
+        step.update(state="pending", summary="")
+
+    def begin(step_id: str, message: str) -> None:
+        if cancel is not None and cancel.is_set():
+            raise ScanCancelled
+        next(step for step in steps if step["id"] == step_id).update(state="running", started_at=time.time())
+        progress(message, steps)
+
+    def finish(step_id: str, state: str, summary: str) -> None:
+        next(step for step in steps if step["id"] == step_id).update(state=state, summary=summary, finished_at=time.time())
+
+    def record(found: list[dict], stage: dict, issues: list[dict]) -> None:
+        finish(stage["id"], stage["state"], stage.get("summary", ""))
+        findings.extend(found)
+        stages.append(stage)
+        limitations.extend(issues)
+
+    cancelled = False
     with tempfile.TemporaryDirectory(prefix="projectn-") as temp:
         work = Path(temp)
         repo = local_path
-        if repo_url:
-            progress("Cloning public repository")
-            repo = work / "source"
-            try:
-                clone_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_LFS_SKIP_SMUDGE": "1"}
-                subprocess.run(["git", "clone", "--depth", "1", "--single-branch", "--no-recurse-submodules", "--", repo_url, str(repo)], capture_output=True, text=True, timeout=180, check=True, shell=False, env=clone_env)
-                limitations.append(gap("repository_history_shallow", "Only the public repository's default-branch tip was cloned; earlier Git history was not assessed.", "Use a local full-history clone if historical secret coverage is required."))
-            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                repo = None
-                limitations.append(gap("repository_unavailable", "Public repository could not be cloned.", "Check the GitHub URL, network access, repository visibility, and size, then retry."))
-        if repo:
-            progress("Inspecting repository revision")
-            revision = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10, shell=False)
-            commit = revision.stdout.strip() if revision.returncode == 0 else None
-        else:
-            commit = None
-        values = {"url": url or "", "host": host or "", "repo": str(repo) if repo else "", "journey_file": str(journey_file) if journey_file else "", "oob_server": oob_server or "", "oob_token_env": oob_token_env or "", "profile": request.get("profile", "standard"), "port_range": full_options["port_range"], "crawl_depth": str(full_options["crawl_depth"]), "crawl_duration": f"{full_options['crawl_duration_minutes']}m", "template_rate": str(full_options["template_rate"]), "inventory_limit": full_options["inventory_limit"], "browser_page_limit": str(full_options["browser_page_limit"])}
-        selected = [s for s in specs() if ((s["kind"] in {"web", "network"} and url) or (s["kind"] == "code" and repo)) and (s["id"] != "templates" or request.get("profile") in {"deep", "full"}) and (not s.get("full_only") or request.get("profile") == "full") and (not s.get("requires_journey_file") or journey_file)]
-        if url and request.get("profile") not in {"deep", "full"}:
+        commit = None
+        if url and profile not in {"deep", "full"}:
             limitations.append(gap("deep_checks_not_selected", "Template-based vulnerability checks were not selected for this scan.", "Choose Deep scan for an authorized target to run those checks."))
-        if url and not repo:
+        if url and not (repo_url or local_path):
             limitations.append(gap("source_not_provided", "Source code and Git history were not assessed.", "Add a public GitHub URL or local source folder to this project."))
         if not url:
             limitations.append(gap("website_not_provided", "The live website and its network exposure were not assessed.", "Add a website URL to this project."))
-        if url:
-            progress("Inspecting HTTP surface")
-            found, stage, issues = inspect_website(url, host)
-            stage.update(source_revision=builtin_revision("app/web_probe.py", "config/web_probe.json"), rules_dirty=False)
-            findings.extend(found)
-            stages.append(stage)
-            limitations.extend(issues)
-            progress("Inspecting TLS connection")
-            found, stage, issues = inspect_tls(url, host)
-            stage.update(source_revision=builtin_revision("app/tls_probe.py", "config/web_probe.json"), rules_dirty=False)
-            findings.extend(found)
-            stages.append(stage)
-            limitations.extend(issues)
-            if request.get("profile") == "full":
-                progress("Enumerating TLS protocols and cipher suites")
-                found, stage, issues = inspect_tls_config(url, host)
-                findings.extend(found)
-                stages.append(stage)
-                limitations.extend(issues)
-        for index, spec in enumerate(selected):
-            progress(f"Running {spec['label']} ({index + 1}/{len(selected)})")
-            found, stage, issues = scan_one(spec, values, work)
-            findings.extend(found)
-            stages.append(stage)
-            limitations.extend(issues)
-        if api_spec_file:
-            progress("Comparing OpenAPI contract with observed routes")
-            observed = []
-            for stage in stages:
-                if stage["id"] in {"crawler", "browser"}:
-                    observed.extend(stage.get("details", {}).get("api_endpoints", []))
-            found, stage, issues = inspect_api_spec(api_spec_file, url, observed)
-            stage.update(source_revision=builtin_revision("app/api_spec_probe.py"), rules_revision=stage.get("details", {}).get("spec_sha256"), rules_dirty=False)
-            findings.extend(found)
-            stages.append(stage)
-            limitations.extend(issues)
+        try:
+            if repo_url:
+                begin("clone", "Cloning public repository")
+                repo = work / "source"
+                try:
+                    clone_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_LFS_SKIP_SMUDGE": "1"}
+                    cloned = run_tool(["git", "clone", "--depth", "1", "--single-branch", "--no-recurse-submodules", "--", repo_url, str(repo)], 180, cancel, env=clone_env)
+                    if cloned.returncode:
+                        raise subprocess.CalledProcessError(cloned.returncode, "git clone")
+                    limitations.append(gap("repository_history_shallow", "Only the public repository's default-branch tip was cloned; earlier Git history was not assessed.", "Use a local full-history clone if historical secret coverage is required."))
+                    finish("clone", "completed", "Default-branch tip cloned")
+                except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    repo = None
+                    finish("clone", "failed", "Repository could not be cloned")
+                    limitations.append(gap("repository_unavailable", "Public repository could not be cloned.", "Check the GitHub URL, network access, repository visibility, and size, then retry."))
+            if repo:
+                revision = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10, shell=False)
+                commit = revision.stdout.strip() if revision.returncode == 0 else None
+            values = {"url": url or "", "host": host or "", "repo": str(repo) if repo else "", "journey_file": str(journey_file) if journey_file else "", "oob_server": oob_server or "", "oob_token_env": oob_token_env or "", "profile": profile, "port_range": full_options["port_range"], "crawl_depth": str(full_options["crawl_depth"]), "crawl_duration": f"{full_options['crawl_duration_minutes']}m", "template_rate": str(full_options["template_rate"]), "inventory_limit": full_options["inventory_limit"], "browser_page_limit": str(full_options["browser_page_limit"])}
+            if url:
+                begin("surface", "Inspecting HTTP surface")
+                found, stage, issues = inspect_website(url, host)
+                stage.update(source_revision=builtin_revision("app/web_probe.py", "config/web_probe.json"), rules_dirty=False)
+                record(found, stage, issues)
+                begin("tls", "Inspecting TLS connection")
+                found, stage, issues = inspect_tls(url, host)
+                stage.update(source_revision=builtin_revision("app/tls_probe.py", "config/web_probe.json"), rules_dirty=False)
+                record(found, stage, issues)
+                if profile == "full":
+                    begin("tls_config", "Enumerating TLS protocols and cipher suites")
+                    record(*inspect_tls_config(url, host, cancel))
+            runnable = [spec for spec in selected if spec["kind"] != "code" or repo]
+            for spec in runnable:
+                begin(spec["id"], f"Running {spec['label']}")
+                record(*scan_one(spec, values, work, cancel))
+            if api_spec_file:
+                begin("api_spec", "Comparing OpenAPI contract with observed routes")
+                observed = []
+                for stage in stages:
+                    if stage["id"] in {"crawler", "browser"}:
+                        observed.extend(stage.get("details", {}).get("api_endpoints", []))
+                found, stage, issues = inspect_api_spec(api_spec_file, url, observed)
+                stage.update(source_revision=builtin_revision("app/api_spec_probe.py"), rules_revision=stage.get("details", {}).get("spec_sha256"), rules_dirty=False)
+                record(found, stage, issues)
+        except ScanCancelled:
+            cancelled = True
+            for step in steps:
+                if step["state"] == "running":
+                    step.update(state="cancelled", summary="Stopped by user", finished_at=time.time())
+            unfinished = sum(step["state"] in {"pending", "cancelled"} for step in steps)
+            limitations.append(gap("scan_cancelled", f"The scan was stopped by the user; {unfinished} of {len(steps)} steps did not finish.", "Start a new scan of the same target to assess the remaining steps."))
+        for step in steps:
+            if step["state"] == "pending":
+                step["state"] = "not_run" if cancelled else "skipped"
         completed_stages = {stage["id"] for stage in stages if stage["state"] == "completed"}
         if "journeys" in completed_stages:
             journey_stage = next(stage for stage in stages if stage["id"] == "journeys")
@@ -577,11 +645,26 @@ def execute_scan(request: dict, progress) -> dict:
                 if request.get("profile") == "full" and policy["code"] == "intrusive_templates_excluded":
                     continue
                 limitations.append(gap(policy["code"], policy["message"], policy["resolution"], "templates"))
+        step_states = {step["id"]: step["state"] for step in steps}
+        stage_states = {stage["id"]: stage["state"] for stage in stages}
+        configured = {spec["id"]: spec for spec in specs()}
+        reasons = COVERAGE["not_assessed_resolutions"]
         for category, enabled in (("website", bool(url)), ("code", bool(repo))):
             if enabled:
                 for capability in COVERAGE[category]:
-                    if capability["stage"] not in completed_stages:
-                        limitations.append(gap("capability_not_assessed", capability["message"], capability["resolution"], capability["stage"]))
+                    stage_id = capability["stage"]
+                    if stage_id in completed_stages:
+                        continue
+                    spec = configured.get(stage_id, {})
+                    if step_states.get(stage_id) == "not_run":
+                        resolution = reasons["stopped"]
+                    elif stage_id not in step_states and spec.get("full_only") and not spec.get("requires_journey_file") and profile != "full":
+                        resolution = reasons["full_profile"]
+                    elif stage_states.get(stage_id) in {"failed", "partial"}:
+                        resolution = reasons["unfinished"]
+                    else:
+                        resolution = capability["resolution"]
+                    limitations.append(gap("capability_not_assessed", capability["message"], resolution, stage_id))
         for item in findings:
             if repo and item["scanner"] in {"static", "secrets", "dependencies"}:
                 item["location"] = item["location"].replace(str(repo) + os.sep, "")
@@ -589,7 +672,7 @@ def execute_scan(request: dict, progress) -> dict:
                 item["location"] = public_url(item["location"])
             identity = json.dumps([item["scanner"], item["rule"], item["location"], item["title"]], separators=(",", ":"))
             item["fingerprint"] = hashlib.sha256(identity.encode()).hexdigest()[:24]
-    return {"target": {"url": public_url(url) if url else None, "host": host, "repo_url": repo_url, "local_path": str(local_path) if local_path else None, "commit": commit, "profile": request.get("profile", "standard"), "full_options": full_options if request.get("profile") == "full" else None}, "started_at": started, "finished_at": time.time(), "findings": findings, "stages": stages, "limitations": limitations, "summary": {"findings": len(findings), "completed": sum(s["state"] == "completed" for s in stages), "incomplete": sum(s["state"] != "completed" for s in stages)}}
+    return {"target": {"url": public_url(url) if url else None, "host": host, "repo_url": repo_url, "local_path": str(local_path) if local_path else None, "commit": commit, "profile": profile, "full_options": full_options if profile == "full" else None}, "started_at": started, "finished_at": time.time(), "cancelled": cancelled, "steps": steps, "findings": findings, "stages": stages, "limitations": limitations, "summary": {"findings": len(findings), "completed": sum(s["state"] == "completed" for s in stages), "incomplete": sum(s["state"] != "completed" for s in stages)}}
 
 
 def compare_reports(previous: dict, current: dict) -> dict:

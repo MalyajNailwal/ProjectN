@@ -12,6 +12,11 @@
   "code": [
     {"stage": "dependencies", "message": "Dependency and lockfile vulnerabilities were not assessed.", "resolution": "Build the local dependency-risk scanner and rerun the source assessment."}
   ],
+  "not_assessed_resolutions": {
+    "stopped": "The scan was stopped before this step ran. Start a new scan of this target to run it.",
+    "full_profile": "This check runs only in Full scope. Choose Full scope for a target you are authorized to test, then rescan.",
+    "unfinished": "This step ran but did not complete. Review its stage details and the related limitations, then rescan."
+  },
   "deep_profile_limits": [
     {"code": "oob_checks_disabled", "message": "Out-of-band template checks were excluded from this local profile.", "resolution": "Configure a reachable callback service and an explicit OOB-enabled profile before rerunning those checks."},
     {"code": "intrusive_templates_excluded", "message": "Templates tagged dos, fuzz, or bruteforce were excluded.", "resolution": "Review those template families and select a separate authorized test profile if they are required."}

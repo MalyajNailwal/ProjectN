@@ -29,8 +29,8 @@ class LocalSecretScannerIntegrationTests(unittest.TestCase):
             self.assertGreaterEqual(len(findings), 1)
             self.assertNotIn(fake_key, json.dumps({"findings": findings, "stage": stage, "gaps": gaps}))
             with patch("app.core.specs", return_value=[spec]):
-                first = execute_scan({"local_path": str(repo), "profile": "standard"}, lambda _: None)
-                second = execute_scan({"local_path": str(repo), "profile": "standard"}, lambda _: None)
+                first = execute_scan({"local_path": str(repo), "profile": "standard"}, lambda *_: None)
+                second = execute_scan({"local_path": str(repo), "profile": "standard"}, lambda *_: None)
             comparison = compare_reports(first, second)
             self.assertGreaterEqual(comparison["summary"]["still_present"], 1)
             self.assertEqual(comparison["summary"]["not_observed_on_rescan"], 0)
