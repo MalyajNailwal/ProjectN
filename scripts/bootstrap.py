@@ -43,9 +43,6 @@ def main() -> int:
     if options.with_scanners:
         for command, reason in (("git", "scanner source cloning"), ("go", "Go scanner builds"), ("java", "the application scanner"), ("ruby", "the technology profiler"), ("gem", "Ruby dependencies")):
             require(command, reason)
-        free = shutil.disk_usage(ROOT).free / 1024**3
-        if free < 10:
-            raise RuntimeError(f"Full scanner setup needs about 10 GB of free disk space (sources, Go and Gradle caches, browser); {free:.1f} GB is free. Free up space, then rerun.")
         if os.name == "nt":
             override = os.getenv("PROJECTN_SCANNER_PORTS")
             if not shutil.which("nmap") and not (override and Path(override).expanduser().is_file()):
@@ -62,7 +59,6 @@ def main() -> int:
     run("npm", "run", "build", "--prefix", str(ROOT / "web"))
 
     if options.with_scanners:
-        run(str(PYTHON), str(ROOT / "scripts/clone_sources.py"))
         setup = subprocess.run([str(PYTHON), str(ROOT / "scripts/setup_native.py"), "all"], cwd=ROOT, check=False)
         doctor = subprocess.run([str(PYTHON), str(ROOT / "scripts/doctor.py"), "--strict"], cwd=ROOT, check=False)
         if setup.returncode or doctor.returncode:

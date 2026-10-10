@@ -35,7 +35,6 @@ def browser_python() -> Path:
     python = ROOT / "tools/venvs/browser-journeys" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     if not python.is_file() or subprocess.run([str(python), "-c", "import playwright"], capture_output=True, check=False).returncode:
         print("Playwright runtime not found; installing it with Chromium (about 200 MB)...", flush=True)
-        subprocess.run([sys.executable, str(ROOT / "scripts/clone_sources.py"), "--path", "tools/web/browser-journeys/python-bindings"], check=True)
         subprocess.run([sys.executable, str(ROOT / "scripts/setup_native.py"), "browser"], check=True)
     else:
         subprocess.run([str(python), "-m", "playwright", "install", "chromium"], check=True)

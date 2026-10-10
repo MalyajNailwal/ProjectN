@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -15,7 +16,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SCANNERS = json.loads((ROOT / "config/scanners.json").read_text(encoding="utf-8"))["scanners"]
+CONFIG = json.loads((ROOT / "config/scanners.json").read_text(encoding="utf-8"))
+SCANNERS = CONFIG["scanners"]
+LOCK = json.loads((ROOT / "config/source-lock.json").read_text(encoding="utf-8"))["repositories"]
+CACHE = ROOT / "tools/.cache"
+# Build downloads go to tools/.cache, never the user's own caches, and are deleted after each component builds.
+BUILD_CACHE_ENV = {"GOMODCACHE": "go-mod", "GOCACHE": "go-build", "GRADLE_USER_HOME": "gradle", "UV_CACHE_DIR": "uv", "npm_config_cache": "npm"}
+# Approximate peak disk use per component in GB (sources, runtime, and temporary build downloads), measured on macOS.
+DISK_GB = {"go": 3.0, "callback": 0.8, "semgrep": 1.2, "browser": 1.0, "application": 3.0, "accessibility": 0.2, "performance": 0.8, "technology": 0.1, "nmap": 0.5}
 APPLICATION = json.loads((ROOT / "config/application_scan.json").read_text(encoding="utf-8"))
 
 
@@ -23,6 +31,24 @@ def run(*command: str, cwd: Path = ROOT) -> None:
     print("Running:", " ".join(command), flush=True)
     executable = shutil.which(command[0]) or command[0]
     subprocess.run([executable, *command[1:]], cwd=cwd, check=True, shell=False)
+
+
+def component_sources(name: str) -> list[str]:
+    """Pinned source folders a setup component builds; the last component in a setup field owns that entry's sources."""
+    paths = set()
+    for item in SCANNERS + CONFIG["support_repositories"]:
+        if item.get("setup", "").split()[-1:] == [name]:
+            paths.update(item[key] for key in ("source", "rules_source", "path") if item.get(key) in LOCK)
+    return sorted(paths)
+
+
+def remove_tree(path: Path) -> None:
+    def make_writable(function, target, _info) -> None:
+        os.chmod(target, stat.S_IWRITE)  # Go marks module cache files read-only
+        function(target)
+
+    if path.exists():
+        shutil.rmtree(path, onerror=make_writable)
 
 
 def uv() -> list[str]:
@@ -139,22 +165,29 @@ COMPONENTS = {
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("components", nargs="+", choices=[*COMPONENTS, "all"])
-    parser.add_argument("--clone", action="store_true", help="Clone missing scanner sources first")
     options = parser.parse_args()
-    if options.clone:
-        run(sys.executable, str(ROOT / "scripts/clone_sources.py"))
+    for key, folder in BUILD_CACHE_ENV.items():
+        os.environ[key] = str(CACHE / folder)
     selected = list(COMPONENTS) if "all" in options.components else options.components
     failures = []
     for name in selected:
         print(f"\nSetting up {name}", flush=True)
         try:
+            free = shutil.disk_usage(ROOT).free / 1024**3
+            if free < DISK_GB.get(name, 0):
+                raise RuntimeError(f"needs about {DISK_GB[name]:g} GB of free disk while it builds; {free:.1f} GB is free. Free up space and rerun `scripts/setup_native.py {name}`; other components are not affected")
+            if sources := component_sources(name):
+                run(sys.executable, str(ROOT / "scripts/clone_sources.py"), *[argument for path in sources for argument in ("--path", path)])
             COMPONENTS[name]()
+            remove_tree(CACHE)
         except Exception as exc:  # report every component's failure and keep going
             print(f"FAILED {name}: {exc}", file=sys.stderr, flush=True)
             failures.append(name)
             if "all" not in options.components:
                 break
     if failures:
+        if CACHE.exists():
+            print(f"Build downloads for the failed components remain in {CACHE} to speed up a retry; delete that folder to reclaim the space.", file=sys.stderr)
         raise SystemExit("Scanner setup failed: " + ", ".join(failures))
 
 
