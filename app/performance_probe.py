@@ -31,4 +31,4 @@ def run(url: str, output: Path, source: Path, settings: dict) -> None:
 
 if __name__ == "__main__":
     target, result_path, source_path, config_path = sys.argv[1:5]
-    run(target, Path(result_path), Path(source_path), json.loads(Path(config_path).read_text()))
+    run(target, Path(result_path), Path(source_path), json.loads(Path(config_path).read_text(encoding="utf-8")))

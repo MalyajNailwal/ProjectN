@@ -22,12 +22,12 @@ from urllib.parse import urlparse, urlunparse
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = Path(os.getenv("PROJECTN_DATA_DIR") or ROOT / "data")
-CONFIG = json.loads((ROOT / "config" / "scanners.json").read_text())
-COVERAGE = json.loads((ROOT / "config" / "coverage.json").read_text())
-FULL_DEFAULTS = json.loads((ROOT / "config" / "full_scan.json").read_text())
-APPLICATION_CONFIG = json.loads((ROOT / "config" / "application_scan.json").read_text())
-JOURNEY_COVERAGE = json.loads((ROOT / "config" / "journey_coverage.json").read_text())
-PERFORMANCE_CONFIG = json.loads((ROOT / "config" / "performance.json").read_text())
+CONFIG = json.loads((ROOT / "config" / "scanners.json").read_text(encoding="utf-8"))
+COVERAGE = json.loads((ROOT / "config" / "coverage.json").read_text(encoding="utf-8"))
+FULL_DEFAULTS = json.loads((ROOT / "config" / "full_scan.json").read_text(encoding="utf-8"))
+APPLICATION_CONFIG = json.loads((ROOT / "config" / "application_scan.json").read_text(encoding="utf-8"))
+JOURNEY_COVERAGE = json.loads((ROOT / "config" / "journey_coverage.json").read_text(encoding="utf-8"))
+PERFORMANCE_CONFIG = json.loads((ROOT / "config" / "performance.json").read_text(encoding="utf-8"))
 GITHUB_RE = re.compile(r"^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
 
 
@@ -188,20 +188,20 @@ def readiness(spec: dict) -> dict:
         if runtime_version is None:
             missing.append("Nmap executable did not return a version")
     if spec["id"] == "static":
-        source_version = tomllib.loads((source / "cli/pyproject.toml").read_text())["project"]["version"] if (source / "cli/pyproject.toml").is_file() else None
+        source_version = tomllib.loads((source / "cli/pyproject.toml").read_text(encoding="utf-8"))["project"]["version"] if (source / "cli/pyproject.toml").is_file() else None
         python = ROOT / "tools/venvs/static-analyzer" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         if python.is_file():
             check = subprocess.run([str(python), "-c", "from importlib.metadata import version; print(version('semgrep'))"], capture_output=True, text=True, timeout=10, shell=False)
             runtime_version = check.stdout.strip() if check.returncode == 0 else None
     elif spec["id"] in {"browser", "journeys"}:
-        source_version = (source / "DRIVER_VERSION").read_text().strip() if (source / "DRIVER_VERSION").is_file() else None
+        source_version = (source / "DRIVER_VERSION").read_text(encoding="utf-8").strip() if (source / "DRIVER_VERSION").is_file() else None
         python = ROOT / "tools/venvs/browser-journeys" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         if python.is_file():
             check = subprocess.run([str(python), "-c", "from importlib.metadata import version; print(version('playwright'))"], capture_output=True, text=True, timeout=10, shell=False)
             runtime_version = check.stdout.strip() if check.returncode == 0 else None
     elif spec["id"] == "accessibility" and (source / "package.json").is_file() and (source / "axe.js").is_file():
-        source_version = json.loads((source / "package.json").read_text())["version"]
-        with (source / "axe.js").open(errors="replace") as script:
+        source_version = json.loads((source / "package.json").read_text(encoding="utf-8"))["version"]
+        with (source / "axe.js").open(encoding="utf-8", errors="replace") as script:
             header = script.readline()
         match = re.search(r"axe v([0-9.]+)", header)
         runtime_version = match.group(1) if match else None
@@ -212,8 +212,8 @@ def readiness(spec: dict) -> dict:
         if runtime is None:
             missing.append("matching local Lighthouse runtime is missing")
         if (source / "package.json").is_file() and (package / "package.json").is_file():
-            source_version = json.loads((source / "package.json").read_text())["version"]
-            runtime_version = json.loads((package / "package.json").read_text())["version"]
+            source_version = json.loads((source / "package.json").read_text(encoding="utf-8"))["version"]
+            runtime_version = json.loads((package / "package.json").read_text(encoding="utf-8"))["version"]
     if source_version and runtime_version != source_version:
         missing.append(f"runtime version {runtime_version or 'unknown'} does not match cloned source version {source_version}")
     if spec["id"] == "application":
@@ -298,7 +298,7 @@ def parse_output(spec: dict, output: Path) -> tuple[list[dict], dict]:
     if not output.is_file() or output.stat().st_size == 0:
         return [], {"observed": 0}
     if kind in {"nuclei", "katana"}:
-        rows = [json.loads(line) for line in output.read_text(errors="replace").splitlines() if line.strip()]
+        rows = [json.loads(line) for line in output.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
         if kind == "katana":
             inventory = {}
             for row in rows:
@@ -340,7 +340,7 @@ def parse_output(spec: dict, output: Path) -> tuple[list[dict], dict]:
         details = {"observed": len(ports), "ports": ports, "scanned_ports": scan_ranges, "aggregate_states": aggregate_states, "hosts": host_states, "vantage": "this machine"}
         summarize_port_states(details)
         return [], details
-    data = json.loads(output.read_text(errors="replace"))
+    data = json.loads(output.read_text(encoding="utf-8", errors="replace"))
     if kind == "semgrep":
         found = []
         for row in data.get("results", []):

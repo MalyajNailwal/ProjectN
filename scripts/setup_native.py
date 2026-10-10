@@ -15,8 +15,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SCANNERS = json.loads((ROOT / "config/scanners.json").read_text())["scanners"]
-APPLICATION = json.loads((ROOT / "config/application_scan.json").read_text())
+SCANNERS = json.loads((ROOT / "config/scanners.json").read_text(encoding="utf-8"))["scanners"]
+APPLICATION = json.loads((ROOT / "config/application_scan.json").read_text(encoding="utf-8"))
 
 
 def run(*command: str, cwd: Path = ROOT) -> None:
@@ -52,13 +52,13 @@ def build_callback_service() -> None:
 
 def install_semgrep() -> None:
     source = ROOT / "tools/code/static-analyzer/source/cli/pyproject.toml"
-    version = tomllib.loads(source.read_text())["project"]["version"]
+    version = tomllib.loads(source.read_text(encoding="utf-8"))["project"]["version"]
     run("uv", "venv", str(environment_python("static-analyzer").parents[1]))
     run("uv", "pip", "install", "--python", str(environment_python("static-analyzer")), f"semgrep=={version}")
 
 
 def install_browser() -> None:
-    version = (ROOT / "tools/web/browser-journeys/python-bindings/DRIVER_VERSION").read_text().strip()
+    version = (ROOT / "tools/web/browser-journeys/python-bindings/DRIVER_VERSION").read_text(encoding="utf-8").strip()
     run("uv", "venv", str(environment_python("browser-journeys").parents[1]))
     run("uv", "pip", "install", "--python", str(environment_python("browser-journeys")), f"playwright=={version}")
     run(str(environment_command("browser-journeys", "playwright")), "install", "chromium")
@@ -76,7 +76,7 @@ def build_application() -> None:
 
 def install_accessibility() -> None:
     source = ROOT / "tools/quality/accessibility/source"
-    version = json.loads((source / "package.json").read_text())["version"]
+    version = json.loads((source / "package.json").read_text(encoding="utf-8"))["version"]
     with tempfile.TemporaryDirectory(prefix="projectn-axe-") as temp:
         run("npm", "pack", f"axe-core@{version}", "--pack-destination", temp, "--silent")
         archive = Path(temp) / f"axe-core-{version}.tgz"
@@ -89,7 +89,7 @@ def install_accessibility() -> None:
 
 def install_performance() -> None:
     source = ROOT / "tools/quality/performance/source"
-    version = json.loads((source / "package.json").read_text())["version"]
+    version = json.loads((source / "package.json").read_text(encoding="utf-8"))["version"]
     runtime = ROOT / "tools/venvs/performance"
     run("npm", "install", "--prefix", str(runtime), "--ignore-scripts", "--no-audit", f"lighthouse@{version}")
 
@@ -140,7 +140,7 @@ def main() -> None:
         print(f"\nSetting up {name}", flush=True)
         try:
             COMPONENTS[name]()
-        except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+        except Exception as exc:  # report every component's failure and keep going
             print(f"FAILED {name}: {exc}", file=sys.stderr, flush=True)
             failures.append(name)
             if "all" not in options.components:

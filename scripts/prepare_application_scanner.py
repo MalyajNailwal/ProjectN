@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ADDONS = ROOT / "tools/web/application-scanner/add-ons/addOns"
 PLUGINS = ROOT / "tools/web/application-scanner/core/zap/build/distFiles/plugin"
-CONFIG = json.loads((ROOT / "config/application_scan.json").read_text())
+CONFIG = json.loads((ROOT / "config/application_scan.json").read_text(encoding="utf-8"))
 
 
 def main():

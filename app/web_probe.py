@@ -8,7 +8,7 @@ import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
 
-CONFIG = json.loads((Path(__file__).resolve().parent.parent / "config" / "web_probe.json").read_text())
+CONFIG = json.loads((Path(__file__).resolve().parent.parent / "config" / "web_probe.json").read_text(encoding="utf-8"))
 
 
 class SurfaceParser(HTMLParser):

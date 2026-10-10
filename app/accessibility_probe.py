@@ -53,7 +53,7 @@ def inspect(start_url: str, axe_path: Path, page_limit: int, tags: list[str]) ->
 
 if __name__ == "__main__":
     start, output, script_path, limit, config_path = sys.argv[1:6]
-    settings = json.loads(Path(config_path).read_text())
+    settings = json.loads(Path(config_path).read_text(encoding="utf-8"))
     result = inspect(start, Path(script_path), int(limit), settings["tags"])
     Path(output).write_text(json.dumps(result))
     if result["errors"]:

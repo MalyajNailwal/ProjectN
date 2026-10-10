@@ -81,7 +81,7 @@ def run(start_url: str, definition: dict) -> dict:
 
 if __name__ == "__main__":
     origin, journey_file, output = sys.argv[1:4]
-    report = run(origin, json.loads(Path(journey_file).read_text()))
+    report = run(origin, json.loads(Path(journey_file).read_text(encoding="utf-8")))
     Path(output).write_text(json.dumps(report))
     if report["failed"]:
         raise SystemExit(2)

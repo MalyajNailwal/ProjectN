@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 from app.core import ROOT, finding, gap, readiness, run_tool, specs
 
 CONFIG_PATH = ROOT / "config/tls_scan.json"
-CONFIG = json.loads(CONFIG_PATH.read_text())
+CONFIG = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 SCRIPT = ROOT / "tools/network/port-and-service-mapper/source/scripts/ssl-enum-ciphers.nse"
 
 

@@ -9,7 +9,7 @@ import urllib.request
 from pathlib import Path
 from typing import Protocol
 
-CONFIG = json.loads((Path(__file__).resolve().parent.parent / "config/assistant.json").read_text())
+CONFIG = json.loads((Path(__file__).resolve().parent.parent / "config/assistant.json").read_text(encoding="utf-8"))
 
 
 class DraftProvider(Protocol):

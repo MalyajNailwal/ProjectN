@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG = json.loads((ROOT / "config/scanners.json").read_text())
-LOCK = json.loads((ROOT / "config/source-lock.json").read_text())["repositories"]
+CONFIG = json.loads((ROOT / "config/scanners.json").read_text(encoding="utf-8"))
+LOCK = json.loads((ROOT / "config/source-lock.json").read_text(encoding="utf-8"))["repositories"]
 
 
 def git(*args: str) -> subprocess.CompletedProcess[str]:

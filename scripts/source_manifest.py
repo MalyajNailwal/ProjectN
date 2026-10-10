@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG = json.loads((ROOT / "config" / "scanners.json").read_text())
+CONFIG = json.loads((ROOT / "config" / "scanners.json").read_text(encoding="utf-8"))
 
 
 def git_value(path: Path, *args: str) -> str | None:
