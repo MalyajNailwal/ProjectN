@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Activity, ArrowRight, BadgeCheck, Boxes, ChevronRight, CircleAlert, CircleStop, Cpu, Download, FileCode2, FileSearch, Fingerprint, FolderGit2, FolderOpen, Gauge, GitCompareArrows, Globe, Hash, History, KeyRound, LayoutDashboard, ListChecks, LoaderCircle, LockKeyhole, MapPin, Network, OctagonAlert, Radar, Route, ScrollText, Shield, ShieldAlert, ShieldCheck, Sparkles, Trash2, Wrench, X, Zap } from 'lucide-react'
+import { Activity, ArrowRight, BadgeCheck, Boxes, ChevronRight, CircleAlert, CircleStop, Clock3, Cpu, Download, FileCode2, FileSearch, Fingerprint, FolderGit2, FolderOpen, Gauge, GitCompareArrows, Globe, Hash, History, KeyRound, LayoutDashboard, ListChecks, LoaderCircle, LockKeyhole, MapPin, Network, OctagonAlert, Radar, Route, ScrollText, Shield, ShieldAlert, ShieldCheck, Sparkles, Trash2, Wrench, X, Zap } from 'lucide-react'
 import { EmptyState, Meter, PageHeader, Panel, SeverityBadge, SeverityIcon, Stat, StateBadge, StateIcon, ThemeToggle, severityMeta, stateMeta } from './ui'
 import './style.css'
 
@@ -10,8 +10,8 @@ type Limitation = {code:string;message:string;resolution:string;scanner:string|n
 type Step = {id:string;label:string;state:string;summary?:string;started_at?:number;finished_at?:number}
 type Stage = {id:string;label:string;state:string;summary:string;details?:Record<string,unknown>}
 type Report = {target:{url:string|null;repo_url:string|null;local_path:string|null;commit:string|null};started_at:number;finished_at:number;cancelled?:boolean;steps?:Step[];findings:Finding[];stages:Stage[];limitations:Limitation[];summary:{findings:number;completed:number;incomplete:number}}
-type Scan = {id:string;created:number;status:string;progress:string;target:{url?:string;repo_url?:string;local_path?:string};result:Report|null;error:string|null;steps?:Step[]}
-type ScanListItem = Pick<Scan,'id'|'created'|'status'|'progress'|'error'> & {target:string}
+type Scan = {id:string;created:number;status:string;progress:string;target:{url?:string;repo_url?:string;local_path?:string};result:Report|null;error:string|null;steps?:Step[];finished?:number|null}
+type ScanListItem = Pick<Scan,'id'|'created'|'status'|'progress'|'error'|'finished'> & {target:string}
 type Comparison = {summary:{still_present:number;not_observed_on_rescan:number;not_verifiable:number;new:number}}
 type RemediationDraft = {summary:string;fix_steps:string[];verification:string;uncertainty:string;citation:string;model:string;status:string}
 type AssistantStatus = {provider:string;external:boolean;configured:boolean;mode:string}
@@ -43,6 +43,13 @@ const plainClick = (event:React.MouseEvent) => event.button===0&&!event.metaKey&
 const formatTime = (seconds:number) => new Date(seconds*1000).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})
 const shortId = (id:string) => id.slice(0,8).toUpperCase()
 const elapsed = (seconds:number) => {const s=Math.max(0,Math.round(seconds));return s<60?`${s}s`:s<3600?`${Math.floor(s/60)}m ${s%60}s`:`${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`}
+const clock = (seconds:number) => new Date(seconds*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})
+const sameDay = (a:number,b:number) => new Date(a*1000).toDateString()===new Date(b*1000).toDateString()
+// Start → end and duration for a scan; scans cut off before they finished show only when they started.
+function timing(item:{created:number;finished?:number|null;status:string}){
+  if(item.finished) return `${formatTime(item.created)} → ${sameDay(item.created,item.finished)?clock(item.finished):formatTime(item.finished)} · ${elapsed(item.finished-item.created)}`
+  return `started ${formatTime(item.created)}${['queued','running'].includes(item.status)?' · running':''}`
+}
 const finishedStep = new Set(['completed','partial','failed','skipped'])
 const stepWords:Record<string,string> = {pending:'Waiting',running:'Running now',skipped:'Skipped',cancelled:'Stopped by user',not_run:'Not run because the scan was stopped'}
 const severityLevels = ['critical','high','medium','low','info','unknown']
@@ -307,7 +314,7 @@ function App(){
         <section className="card run-card">
           <div className="card-head"><h2>Current assessment</h2>{scan&&<StatusBadge status={scan.status}/>}</div>
           {scan?<>
-            <div className="run-meta"><code>#{shortId(scan.id)}</code>{active&&<span className="run-clock"><Activity size={13} aria-hidden="true"/>{elapsed(now-scan.created)}</span>}</div>
+            <div className="run-meta"><code>#{shortId(scan.id)}</code>{active&&<span className="run-clock"><Activity size={13} aria-hidden="true"/>{elapsed(now-scan.created)}</span>}{!active&&scan.finished&&<span className="run-clock" title={timing(scan)}><Clock3 size={13} aria-hidden="true"/>took {elapsed(scan.finished-scan.created)}</span>}</div>
             {steps.length>0&&<div className="run-progress"><div className="run-progress-head"><strong>{percent}%</strong><span>{doneSteps} of {steps.length} steps finished</span></div><Meter value={percent} label="Scan progress"/></div>}
             <p className="run-now" aria-live="polite">{currentStep?<><LoaderCircle size={14} className="spin" aria-hidden="true"/>{currentStep.label}<span>{elapsed(now-(currentStep.started_at||now))}</span></>:scan.progress}</p>
             <div className="run-target" title={targetOf(scan.target)}><Globe size={14} aria-hidden="true"/>{targetOf(scan.target)}</div>
@@ -331,7 +338,7 @@ function App(){
       <div className="card-head"><h2><History size={16} aria-hidden="true"/>Recent scans</h2><div className="head-actions"><span className="hint-text">{history.length} stored on this computer</span>{history.some(item=>!['queued','running'].includes(item.status))&&(confirmClear
         ?<span className="confirm" role="group" aria-label="Confirm clearing history"><span>Delete all finished scans?</span><button type="button" className="btn ghost sm" onClick={()=>setConfirmClear(false)}>Cancel</button><button type="button" className="btn danger sm" onClick={()=>removeScans()}><Trash2 size={14} aria-hidden="true"/>Delete</button></span>
         :<button type="button" className="btn ghost sm" onClick={()=>setConfirmClear(true)}><Trash2 size={14} aria-hidden="true"/>Clear history</button>)}</div></div>
-      {history.length?<div className="rows scroll">{history.map(item=>{let target:Record<string,string|null>={};try{target=JSON.parse(item.target)}catch{/* older rows may hold invalid JSON */}const running=['queued','running'].includes(item.status);const hasReport=['completed','cancelled'].includes(item.status);const body=<><StateIcon state={item.status}/><span className="row-main"><strong>{target.url||target.repo_url||target.local_path||'Unknown target'}</strong><small><code>#{shortId(item.id)}</code> · {formatTime(item.created)}</small>{item.status==='failed'&&<small className="row-error">{item.error||item.progress||'The scan stopped with an error before producing a report.'}</small>}</span><StatusBadge status={item.status}/></>;return <div key={item.id} className={'row-wrap'+(scan?.id===item.id?' current':'')}>
+      {history.length?<div className="rows scroll">{history.map(item=>{let target:Record<string,string|null>={};try{target=JSON.parse(item.target)}catch{/* older rows may hold invalid JSON */}const running=['queued','running'].includes(item.status);const hasReport=['completed','cancelled'].includes(item.status);const body=<><StateIcon state={item.status}/><span className="row-main"><strong>{target.url||target.repo_url||target.local_path||'Unknown target'}</strong><small><code>#{shortId(item.id)}</code> · {timing(item)}</small>{item.status==='failed'&&<small className="row-error">{item.error||item.progress||'The scan stopped with an error before producing a report.'}</small>}</span><StatusBadge status={item.status}/></>;return <div key={item.id} className={'row-wrap'+(scan?.id===item.id?' current':'')}>
         {hasReport||running
           ?<button className="row" onClick={()=>openScan(item.id,hasReport?'findings':'overview')}>{body}<span className="row-cta">{hasReport?'View report':'View progress'}<ChevronRight size={15} aria-hidden="true"/></span></button>
           :<div className="row static">{body}</div>}

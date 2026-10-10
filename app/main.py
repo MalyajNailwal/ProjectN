@@ -47,8 +47,19 @@ def connection():
     try:
         db.row_factory = sqlite3.Row
         db.execute("CREATE TABLE IF NOT EXISTS scans (id TEXT PRIMARY KEY, created REAL NOT NULL, status TEXT NOT NULL, progress TEXT NOT NULL, target TEXT NOT NULL, result TEXT, error TEXT)")
-        if "steps" not in {row[1] for row in db.execute("PRAGMA table_info(scans)")}:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(scans)")}
+        if "steps" not in columns:
             db.execute("ALTER TABLE scans ADD COLUMN steps TEXT")
+        if "finished" not in columns:
+            db.execute("ALTER TABLE scans ADD COLUMN finished REAL")
+            # Scans saved before this column existed keep their end time inside the stored report.
+            for row in db.execute("SELECT id, result FROM scans WHERE result IS NOT NULL").fetchall():
+                try:
+                    finished = json.loads(row["result"]).get("finished_at")
+                except (ValueError, AttributeError):
+                    finished = None
+                if finished:
+                    db.execute("UPDATE scans SET finished = ? WHERE id = ?", (finished, row["id"]))
         yield db
         db.commit()
     except BaseException:
@@ -92,11 +103,11 @@ def run_scan(scan_id: str, request: dict, cancel: threading.Event):
         update_scan(scan_id, status="running", progress="Preparing scan")
         report = execute_scan(request, lambda status, steps: update_scan(scan_id, progress=status, steps=json.dumps(steps)), cancel)
         stopped = report["cancelled"]
-        update_scan(scan_id, status="cancelled" if stopped else "completed", progress="Stopped by user; partial report saved" if stopped else "Scan complete", result=json.dumps(report), steps=json.dumps(report["steps"]))
+        update_scan(scan_id, status="cancelled" if stopped else "completed", progress="Stopped by user; partial report saved" if stopped else "Scan complete", result=json.dumps(report), steps=json.dumps(report["steps"]), finished=time.time())
     except ScanCancelled:
-        update_scan(scan_id, status="cancelled", progress="Stopped by user before scanning started")
+        update_scan(scan_id, status="cancelled", progress="Stopped by user before scanning started", finished=time.time())
     except Exception as exc:
-        update_scan(scan_id, status="failed", progress="Scan failed", error=f"Scan failed ({type(exc).__name__}). Check target access and local scanner setup.")
+        update_scan(scan_id, status="failed", progress="Scan failed", error=f"Scan failed ({type(exc).__name__}). Check target access and local scanner setup.", finished=time.time())
     finally:
         ACTIVE.pop(scan_id, None)
 
@@ -125,7 +136,7 @@ def full_config():
 @app.get("/api/scans")
 def scans():
     with connection() as db:
-        return [dict(row) for row in db.execute("SELECT id, created, status, progress, target, error FROM scans ORDER BY created DESC LIMIT 50")]
+        return [dict(row) for row in db.execute("SELECT id, created, finished, status, progress, target, error FROM scans ORDER BY created DESC LIMIT 50")]
 
 
 @app.post("/api/scans", status_code=202)
