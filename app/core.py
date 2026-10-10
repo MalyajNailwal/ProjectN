@@ -356,7 +356,8 @@ def parse_output(spec: dict, output: Path) -> tuple[list[dict], dict]:
         for row in data.get("results", []):
             extra = row.get("extra", {})
             meta = extra.get("metadata", {})
-            found.append(finding(spec["id"], extra.get("message", row.get("check_id", "Code finding")), extra.get("severity", "unknown"), f"{row.get('path', '')}:{row.get('start', {}).get('line', '')}", row.get("check_id", "Rule matched source code"), meta.get("fix", "Review the highlighted code and rule guidance, change the unsafe pattern, then rescan."), row.get("check_id", "")))
+            severity = str(extra.get("severity", "unknown")).lower()
+            found.append(finding(spec["id"], extra.get("message", row.get("check_id", "Code finding")), {"error": "high", "warning": "medium", "info": "low"}.get(severity, severity), f"{row.get('path', '')}:{row.get('start', {}).get('line', '')}", row.get("check_id", "Rule matched source code"), meta.get("fix", "Review the highlighted code and rule guidance, change the unsafe pattern, then rescan."), row.get("check_id", "")))
         return found, {"observed": len(data.get("results", [])), "errors": len(data.get("errors", [])), "files_scanned": len(data.get("paths", {}).get("scanned", []))}
     if kind == "gitleaks":
         found = []
