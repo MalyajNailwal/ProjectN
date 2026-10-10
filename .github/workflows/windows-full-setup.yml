@@ -1,0 +1,53 @@
+name: Windows full scanner setup
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    env:
+      GOMAXPROCS: '2'
+      PROJECTN_FIXTURE_USER: fixture-user
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Install remaining README prerequisites
+        shell: pwsh
+        run: |
+          python -m pip install uv
+          choco install nmap -y --no-progress
+          "C:\Program Files (x86)\Nmap" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "JAVA_HOME=$env:JAVA_HOME_17_X64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$env:JAVA_HOME_17_X64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Record prerequisite versions
+        run: |
+          python --version
+          node --version
+          go version
+          java -version
+          ruby --version
+          uv --version
+          nmap --version
+      - name: Full setup from the README command
+        run: python scripts/bootstrap.py --with-scanners
+      - name: Full fixture scan requiring all 12 scanner capabilities
+        run: >-
+          .venv/Scripts/python.exe scripts/smoke_local.py --profile full --timeout 3000
+          --field local_path=. --field journey_file=tests/fixtures/journey.json
+          --field port_range=1-1024 --field template_rate=150
+          --require-stage technology --require-stage templates --require-stage ports --require-stage crawler
+          --require-stage browser --require-stage journeys --require-stage application --require-stage accessibility
+          --require-stage performance --require-stage static --require-stage secrets --require-stage dependencies
