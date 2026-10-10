@@ -577,6 +577,7 @@ def response_signal_gaps(stages: list[dict]) -> list[dict]:
 
 def execute_scan(request: dict, progress, cancel=None) -> dict:
     from app.infra_probe import inspect_infrastructure
+    from app.supabase_probe import inspect_supabase
     from app.web_probe import inspect_website
     from app.tls_probe import inspect_tls
     from app.tls_config_probe import inspect_tls_config
@@ -615,6 +616,7 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
         steps += [{"id": "surface", "label": "HTTP surface"}, {"id": "tls", "label": "TLS certificate and connection"}]
         if profile == "full":
             steps.append({"id": "tls_config", "label": "TLS protocol and cipher configuration"})
+            steps.append({"id": "supabase", "label": "Supabase table exposure"})
         steps.append({"id": "infra", "label": "Infrastructure and stack"})
     steps += [{"id": spec["id"], "label": spec["label"]} for spec in selected]
     if api_spec_file:
@@ -680,6 +682,10 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
                 if profile == "full":
                     begin("tls_config", "Enumerating TLS protocols and cipher suites")
                     record(*inspect_tls_config(url, host, cancel))
+                    begin("supabase", "Testing Supabase table exposure")
+                    found, stage, issues = inspect_supabase(surface_body, cancel)
+                    stage.update(source_revision=builtin_revision("app/supabase_probe.py", "config/supabase_probe.json"), rules_dirty=False)
+                    record(found, stage, issues)
                 begin("infra", "Profiling hosting, backend, and frontend signals")
                 found, stage, issues = inspect_infrastructure(surface_headers, surface_body)
                 stage.update(source_revision=builtin_revision("app/infra_probe.py", "config/infra_signals.json"), rules_dirty=False)

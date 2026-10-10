@@ -1,0 +1,7 @@
+{
+  "timeout_seconds": 8,
+  "max_response_bytes": 65536,
+  "max_tables": 15,
+  "common_table_guesses": ["users", "profiles", "accounts", "customers", "orders", "payments", "messages", "posts", "products", "subscriptions", "sessions", "admin_users", "api_keys", "tokens", "wallets"],
+  "sensitive_table_words": ["user", "account", "customer", "payment", "admin", "token", "key", "wallet", "session", "password", "secret", "credential"]
+}
