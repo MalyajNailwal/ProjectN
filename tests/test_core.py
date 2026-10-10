@@ -35,6 +35,19 @@ class TargetValidationTests(unittest.TestCase):
         self.assertEqual(stage["state"], "partial")
         self.assertIn("oob_server_unreachable", {item["code"] for item in gaps})
 
+    def test_errored_scanner_without_observations_is_failed_not_partial(self):
+        spec = {"id": "static", "label": "Source analysis", "source": "tools/code/static-analyzer/source", "args": ["{output}"], "output": "semgrep", "timeout": 5}
+        ready = {"ready": True, "executable": "fixture-scanner", "source_revision": "rev", "source_version": None, "runtime_version": None, "runtime_origin": "fixture", "rules_revision": "rules", "rules_dirty": False, "runtime": None}
+
+        def invalid_rules(argv, *_args, **_options):
+            Path(argv[1]).write_text(json.dumps({"results": [], "errors": [{"type": "SemgrepError"}], "paths": {"scanned": []}}))
+            return SimpleNamespace(returncode=7)
+
+        with tempfile.TemporaryDirectory() as temp, patch("app.core.readiness", return_value=ready), patch("app.core.run_tool", side_effect=invalid_rules):
+            _, stage, gaps = scan_one(spec, {"profile": "standard"}, Path(temp))
+        self.assertEqual(stage["state"], "failed")
+        self.assertIn("scanner_error", {item["code"] for item in gaps})
+
     def test_full_website_scan_requires_explicit_authorization(self):
         with self.assertRaisesRegex(ValueError, "explicit authorization"):
             execute_scan({"url": "https://example.test", "profile": "full"}, lambda *_: None)

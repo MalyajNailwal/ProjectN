@@ -346,7 +346,7 @@ def parse_output(spec: dict, output: Path) -> tuple[list[dict], dict]:
             extra = row.get("extra", {})
             meta = extra.get("metadata", {})
             found.append(finding(spec["id"], extra.get("message", row.get("check_id", "Code finding")), extra.get("severity", "unknown"), f"{row.get('path', '')}:{row.get('start', {}).get('line', '')}", row.get("check_id", "Rule matched source code"), meta.get("fix", "Review the highlighted code and rule guidance, change the unsafe pattern, then rescan."), row.get("check_id", "")))
-        return found, {"observed": len(data.get("results", [])), "errors": len(data.get("errors", []))}
+        return found, {"observed": len(data.get("results", [])), "errors": len(data.get("errors", [])), "files_scanned": len(data.get("paths", {}).get("scanned", []))}
     if kind == "gitleaks":
         found = []
         for row in data:
@@ -481,12 +481,15 @@ def scan_one(spec: dict, values: dict, work: Path, cancel=None) -> tuple[list[di
         acceptable = result.returncode == 0 or (spec["id"] in {"secrets", "dependencies"} and result.returncode == 1 and bool(findings))
         if spec["id"] == "application" and not output.is_file():
             acceptable = False
-        state = "completed" if acceptable and not extra_issues else "partial" if output.exists() else "failed"
+        # A scanner that exits with an error and observed nothing has not partially covered anything.
+        state = "completed" if acceptable and not extra_issues else "partial" if output.exists() and (acceptable or details.get("observed")) else "failed"
         issues = extra_issues if acceptable else extra_issues + [gap("scanner_error", f"{spec['label']} exited with code {result.returncode}.", "Inspect the scanner diagnostic, fix the setup or target access, then retry.", spec["id"])]
         if oob_issue:
             issues.append(oob_issue)
         elif spec["id"] == "templates" and full and values.get("oob_server") and not details.get("oob_interactions"):
             issues.append(gap("oob_target_reachability_unverified", "The callback server responded locally, but target-to-callback reachability was not independently verified.", "Confirm an interaction with a controlled OOB test before treating absent OOB findings as coverage.", "templates"))
+        if spec["id"] == "static" and acceptable and details.get("files_scanned") == 0:
+            issues.append(gap("no_files_analyzed", "Source analysis did not analyze any files.", "Check that the folder contains source files in supported languages that are not excluded by .gitignore or .semgrepignore, then rescan.", spec["id"]))
         if details.get("errors"):
             error_count = len(details["errors"]) if isinstance(details["errors"], list) else details["errors"]
             issues.append(gap("scanner_partial", f"{error_count} target or parser errors were reported.", "Review the stage details and target access, then rerun the scan.", spec["id"]))
