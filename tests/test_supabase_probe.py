@@ -17,10 +17,11 @@ def fake_jwt() -> str:
 
 
 class FakePostgrest(BaseHTTPRequestHandler):
-    """Serves canned responses keyed by path; `exposed_tables` and `schema` are set per-test on the class."""
+    """Serves canned responses keyed by path; `exposed_tables`/`schema`/`buckets` are set per-test on the class."""
 
     exposed_tables: set[str] = set()
     schema: dict | None = None
+    buckets: list[dict] = []
 
     def log_message(self, *a):
         pass
@@ -32,6 +33,9 @@ class FakePostgrest(BaseHTTPRequestHandler):
                 self._json(200, {"definitions": self.schema})
             else:
                 self._json(404, {})
+            return
+        if path == "/storage/v1/bucket":
+            self._json(200, self.buckets)
             return
         table = path.removeprefix("/rest/v1/")
         if table in self.exposed_tables:
@@ -49,9 +53,10 @@ class FakePostgrest(BaseHTTPRequestHandler):
 
 
 class SupabaseProbeTests(unittest.TestCase):
-    def run_server(self, exposed_tables=frozenset(), schema=None):
+    def run_server(self, exposed_tables=frozenset(), schema=None, buckets=()):
         FakePostgrest.exposed_tables = set(exposed_tables)
         FakePostgrest.schema = schema
+        FakePostgrest.buckets = list(buckets)
         server = ThreadingHTTPServer(("127.0.0.1", 0), FakePostgrest)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.shutdown)
@@ -101,6 +106,19 @@ class SupabaseProbeTests(unittest.TestCase):
         self.assertFalse(stage["details"]["schema_introspectable"])
         self.assertLessEqual(stage["details"]["tables_checked"], 15)
         self.assertIn("supabase_guess_list_only", {i["code"] for i in issues})
+
+    def test_public_bucket_becomes_a_needs_review_finding(self):
+        base_url = self.run_server(exposed_tables=set(), schema={}, buckets=[
+            {"name": "avatars", "public": True},
+            {"name": "backups", "public": False},
+        ])
+        with patch("app.supabase_probe.discover_project", return_value=(base_url, "fixture-key")):
+            found, stage, issues = inspect_supabase("<html/>")
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["severity"], "medium")
+        self.assertEqual(found[0]["confidence"], "needs-review")
+        self.assertIn("avatars", found[0]["title"])
+        self.assertEqual(stage["details"]["public_buckets"], ["avatars"])
 
     def test_cancel_stops_early_and_reports_partial(self):
         base_url = self.run_server(exposed_tables=set(), schema={"users": {}})

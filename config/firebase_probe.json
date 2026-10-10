@@ -1,0 +1,5 @@
+{
+  "timeout_seconds": 8,
+  "max_response_bytes": 65536,
+  "sensitive_key_words": ["user", "account", "customer", "payment", "admin", "token", "key", "wallet", "session", "password", "secret", "credential", "email"]
+}

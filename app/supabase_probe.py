@@ -1,10 +1,11 @@
-"""Test whether tables behind a Supabase project discovered on the page are readable without authentication.
+"""Test whether tables and storage buckets behind a Supabase project discovered on the page are exposed.
 
 This is an active check: it only runs in Full scope, where execute_scan already requires explicit scan-time
 authorization before anything starts. It only queries the Supabase project discovered on the target's own
 page (never an arbitrary URL), tries that project's own PostgREST schema first, and otherwise tries a short,
 fixed list of common table-name guesses -- never an unbounded or growing search. It never stores actual row
 values in the report: only the table name, its column names, and the fact that at least one row came back.
+Storage buckets are checked with a single metadata-only request (no file listing or download).
 """
 
 from __future__ import annotations
@@ -57,8 +58,16 @@ def candidate_tables(base_url: str, api_key: str, timeout: float) -> tuple[list[
     return CONFIG["common_table_guesses"][: CONFIG["max_tables"]], False
 
 
+def public_storage_buckets(base_url: str, api_key: str, timeout: float) -> list[str]:
+    """Bucket names the project's own Storage API itself marks public=true; no file listing or download."""
+    status, buckets = request_json(f"{base_url}/storage/v1/bucket", api_key, "application/json", timeout)
+    if status != 200 or not isinstance(buckets, list):
+        return []
+    return [item["name"] for item in buckets if isinstance(item, dict) and item.get("public") is True and isinstance(item.get("name"), str)]
+
+
 def inspect_supabase(body: str, cancel=None) -> tuple[list[dict], dict, list[dict]]:
-    label = "Supabase table exposure"
+    label = "Supabase exposure"
     discovered = discover_project(body)
     if not discovered:
         return [], {"id": "supabase", "label": label, "state": "skipped", "summary": "No Supabase project was found on the page"}, [
@@ -89,12 +98,25 @@ def inspect_supabase(body: str, cancel=None) -> tuple[list[dict], dict, list[dic
             "supabase:rls-missing",
             "observed",
         ))
+    public_buckets = [] if interrupted else public_storage_buckets(base_url, api_key, timeout)
+    for bucket in public_buckets:
+        found.append(finding(
+            "supabase",
+            f"Supabase storage bucket '{bucket}' is public",
+            "medium",
+            base_url,
+            f"GET {base_url}/storage/v1/bucket lists '{bucket}' with public=true: anyone can read files in it without authentication. "
+            "This is sometimes intentional (such as product images or avatars); files were not listed or downloaded.",
+            "If this bucket should not be public, set it to private in the Supabase dashboard (Storage) and add storage RLS policies, then rescan.",
+            "supabase:public-storage-bucket",
+            "needs-review",
+        ))
     issues = []
     if not schema_readable and checked:
         issues.append(gap("supabase_guess_list_only", f"Only {checked} common table name(s) were tried; the project did not expose its own schema.", "Table names outside this fixed list were not tested; this is not proof those tables are protected.", "supabase"))
     if interrupted:
-        issues.append(gap("scan_cancelled", f"The Supabase check was stopped by the user after {checked} of {len(tables)} table(s).", "Start a new Full scan of the same target to check the remaining tables.", "supabase"))
-    summary = f"{len(exposed)} of {checked} checked table(s) readable without authentication" if checked else "No tables could be checked"
+        issues.append(gap("scan_cancelled", f"The Supabase check was stopped by the user after {checked} of {len(tables)} table(s); storage buckets were not checked.", "Start a new Full scan of the same target to check the remaining tables and storage buckets.", "supabase"))
+    summary = f"{len(exposed)} of {checked} table(s) and {len(public_buckets)} storage bucket(s) readable without authentication" if checked else "No tables could be checked"
     state = "partial" if interrupted else "completed" if checked else "failed"
-    details = {"project_url": base_url, "tables_checked": checked, "schema_introspectable": schema_readable, "exposed_tables": [item["table"] for item in exposed]}
+    details = {"project_url": base_url, "tables_checked": checked, "schema_introspectable": schema_readable, "exposed_tables": [item["table"] for item in exposed], "public_buckets": public_buckets}
     return found, {"id": "supabase", "label": label, "state": state, "summary": summary, "details": details}, issues
