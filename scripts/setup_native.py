@@ -25,6 +25,15 @@ def run(*command: str, cwd: Path = ROOT) -> None:
     subprocess.run([executable, *command[1:]], cwd=cwd, check=True, shell=False)
 
 
+def uv() -> list[str]:
+    """Use uv from PATH, or install it into this Python environment when it is missing."""
+    if shutil.which("uv"):
+        return ["uv"]
+    if subprocess.run([sys.executable, "-m", "uv", "--version"], capture_output=True, check=False).returncode:
+        run(sys.executable, "-m", "pip", "install", "uv")
+    return [sys.executable, "-m", "uv"]
+
+
 def environment_python(name: str) -> Path:
     return ROOT / "tools/venvs" / name / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
@@ -53,14 +62,14 @@ def build_callback_service() -> None:
 def install_semgrep() -> None:
     source = ROOT / "tools/code/static-analyzer/source/cli/pyproject.toml"
     version = tomllib.loads(source.read_text(encoding="utf-8"))["project"]["version"]
-    run("uv", "venv", str(environment_python("static-analyzer").parents[1]))
-    run("uv", "pip", "install", "--python", str(environment_python("static-analyzer")), f"semgrep=={version}")
+    run(*uv(), "venv", "--allow-existing", str(environment_python("static-analyzer").parents[1]))
+    run(*uv(), "pip", "install", "--python", str(environment_python("static-analyzer")), f"semgrep=={version}")
 
 
 def install_browser() -> None:
     version = (ROOT / "tools/web/browser-journeys/python-bindings/DRIVER_VERSION").read_text(encoding="utf-8").strip()
-    run("uv", "venv", str(environment_python("browser-journeys").parents[1]))
-    run("uv", "pip", "install", "--python", str(environment_python("browser-journeys")), f"playwright=={version}")
+    run(*uv(), "venv", "--allow-existing", str(environment_python("browser-journeys").parents[1]))
+    run(*uv(), "pip", "install", "--python", str(environment_python("browser-journeys")), f"playwright=={version}")
     run(str(environment_command("browser-journeys", "playwright")), "install", "chromium")
 
 

@@ -40,8 +40,11 @@ def main() -> int:
     if not match or (int(match.group(1)), int(match.group(2))) < (22, 19):
         raise RuntimeError(f"Node.js 22.19 or newer is required; found {node_version or 'unknown'}")
     if options.with_scanners:
-        for command, reason in (("git", "scanner source cloning"), ("go", "Go scanner builds"), ("java", "the application scanner"), ("ruby", "the technology profiler"), ("gem", "Ruby dependencies"), ("uv", "Python scanner runtimes")):
+        for command, reason in (("git", "scanner source cloning"), ("go", "Go scanner builds"), ("java", "the application scanner"), ("ruby", "the technology profiler"), ("gem", "Ruby dependencies")):
             require(command, reason)
+        free = shutil.disk_usage(ROOT).free / 1024**3
+        if free < 10:
+            raise RuntimeError(f"Full scanner setup needs about 10 GB of free disk space (sources, Go and Gradle caches, browser); {free:.1f} GB is free. Free up space, then rerun.")
         if os.name == "nt":
             override = os.getenv("PROJECTN_SCANNER_PORTS")
             if not shutil.which("nmap") and not (override and Path(override).expanduser().is_file()):
