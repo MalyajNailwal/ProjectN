@@ -1,0 +1,2 @@
+# Fake value in a redaction test (tests/test_core.py), assembled at run time since the following commit.
+8d84d0ae45e2fcf2b7c2e65604457bbcdadbb588:tests/test_core.py:generic-api-key:44
