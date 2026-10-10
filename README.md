@@ -28,6 +28,19 @@ py -3 scripts/bootstrap.py
 
 Open `http://127.0.0.1:8000`. A fork uses the same commands with its own clone URL. The built-in HTTP/TLS checks work right away; the **Tool setup** page and `scripts/doctor.py` show which external scanners still need installation. Then follow the [five-minute demo](docs/reviewer-demo.md), which scans a bundled local test site.
 
+## Set up with an AI coding agent
+
+Open the cloned folder in Claude Code, Codex, Cursor, or another coding agent and ask:
+
+> Set up ProjectN on this computer and verify it.
+
+The agent follows [AGENTS.md](AGENTS.md): it runs `scripts/doctor.py`, asks before installing any prerequisite, runs `scripts/bootstrap.py --verify` (add `--with-scanners` for all 12 scanners), and proves the result with a real browser test that launches a scan from the dashboard. It scans only the bundled test site unless you name a target you are authorized to test. You can run the same commands yourself:
+
+```sh
+python3 scripts/bootstrap.py --verify                   # Windows: py -3 scripts/bootstrap.py --verify
+python3 scripts/bootstrap.py --with-scanners --verify   # all 12 scanners; about 10 GB free disk and 30–60 minutes
+```
+
 ## Full scanner setup (all 12 capabilities)
 
 Install the toolchain once:
