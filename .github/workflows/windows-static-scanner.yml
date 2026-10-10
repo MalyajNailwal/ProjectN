@@ -1,0 +1,27 @@
+name: Windows source scanner smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Install app and native package installer
+        run: python -m pip install -e . uv
+      - name: Clone pinned engine and rules source
+        run: |
+          python scripts/clone_sources.py --path tools/code/static-analyzer/source --path tools/code/static-analyzer/checks
+      - name: Install matching Windows scanner runtime
+        run: python scripts/setup_native.py semgrep
+      - name: Run real local pattern scan
+        run: |
+          tools/venvs/static-analyzer/Scripts/semgrep.exe --version
+          tools/venvs/static-analyzer/Scripts/semgrep.exe scan --pattern "x == x" --lang python --json tests/test_source_lock.py

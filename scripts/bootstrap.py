@@ -59,8 +59,10 @@ def main() -> int:
 
     if options.with_scanners:
         run(str(PYTHON), str(ROOT / "scripts/clone_sources.py"))
-        run(str(PYTHON), str(ROOT / "scripts/setup_native.py"), "all")
-        run(str(PYTHON), str(ROOT / "scripts/doctor.py"), "--strict")
+        setup = subprocess.run([str(PYTHON), str(ROOT / "scripts/setup_native.py"), "all"], cwd=ROOT, check=False)
+        doctor = subprocess.run([str(PYTHON), str(ROOT / "scripts/doctor.py"), "--strict"], cwd=ROOT, check=False)
+        if setup.returncode or doctor.returncode:
+            raise RuntimeError("Full scanner setup is incomplete; review the component failures and doctor output above")
     print("\nProjectN is ready to start:", flush=True)
     print(f"  {PYTHON} {ROOT / 'scripts/run_local.py'}", flush=True)
     if not options.with_scanners:

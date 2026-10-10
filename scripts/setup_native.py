@@ -135,9 +135,18 @@ def main() -> None:
     if options.clone:
         run(sys.executable, str(ROOT / "scripts/clone_sources.py"))
     selected = list(COMPONENTS) if "all" in options.components else options.components
+    failures = []
     for name in selected:
         print(f"\nSetting up {name}", flush=True)
-        COMPONENTS[name]()
+        try:
+            COMPONENTS[name]()
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+            print(f"FAILED {name}: {exc}", file=sys.stderr, flush=True)
+            failures.append(name)
+            if "all" not in options.components:
+                break
+    if failures:
+        raise SystemExit("Scanner setup failed: " + ", ".join(failures))
 
 
 if __name__ == "__main__":

@@ -59,6 +59,7 @@ Only scan websites and networks you are authorized to assess. A public GitHub re
 ## Documentation
 
 - [Five-minute reviewer demo](docs/reviewer-demo.md)
+- [Platform validation matrix](docs/validation.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security reporting](SECURITY.md)
 - [ProjectN license](LICENSE) and [third-party licenses](THIRD_PARTY.md)
