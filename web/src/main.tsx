@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Activity, ArrowRight, BadgeCheck, Boxes, ChevronRight, CircleAlert, CircleStop, Cpu, Download, FileCode2, FileSearch, Fingerprint, FolderGit2, FolderOpen, Gauge, GitCompareArrows, Globe, Hash, History, KeyRound, LayoutDashboard, ListChecks, LoaderCircle, LockKeyhole, MapPin, Network, OctagonAlert, Radar, Route, ScrollText, Shield, ShieldAlert, ShieldCheck, Sparkles, Wrench, X, Zap } from 'lucide-react'
+import { Activity, ArrowRight, BadgeCheck, Boxes, ChevronRight, CircleAlert, CircleStop, Cpu, Download, FileCode2, FileSearch, Fingerprint, FolderGit2, FolderOpen, Gauge, GitCompareArrows, Globe, Hash, History, KeyRound, LayoutDashboard, ListChecks, LoaderCircle, LockKeyhole, MapPin, Network, OctagonAlert, Radar, Route, ScrollText, Shield, ShieldAlert, ShieldCheck, Sparkles, Trash2, Wrench, X, Zap } from 'lucide-react'
 import { EmptyState, Meter, PageHeader, Panel, SeverityBadge, SeverityIcon, Stat, StateBadge, StateIcon, ThemeToggle, severityMeta, stateMeta } from './ui'
 import './style.css'
 
@@ -11,7 +11,7 @@ type Step = {id:string;label:string;state:string;summary?:string;started_at?:num
 type Stage = {id:string;label:string;state:string;summary:string;details?:Record<string,unknown>}
 type Report = {target:{url:string|null;repo_url:string|null;local_path:string|null;commit:string|null};started_at:number;finished_at:number;cancelled?:boolean;steps?:Step[];findings:Finding[];stages:Stage[];limitations:Limitation[];summary:{findings:number;completed:number;incomplete:number}}
 type Scan = {id:string;created:number;status:string;progress:string;target:{url?:string;repo_url?:string;local_path?:string};result:Report|null;error:string|null;steps?:Step[]}
-type ScanListItem = Pick<Scan,'id'|'created'|'status'|'progress'> & {target:string}
+type ScanListItem = Pick<Scan,'id'|'created'|'status'|'progress'|'error'> & {target:string}
 type Comparison = {summary:{still_present:number;not_observed_on_rescan:number;not_verifiable:number;new:number}}
 type RemediationDraft = {summary:string;fix_steps:string[];verification:string;uncertainty:string;citation:string;model:string;status:string}
 type AssistantStatus = {provider:string;external:boolean;configured:boolean;mode:string}
@@ -104,6 +104,8 @@ function App(){
   const [assistantStatus,setAssistantStatus] = useState<AssistantStatus|null>(null)
   const [allowExternal,setAllowExternal] = useState(false)
   const [stopping,setStopping] = useState(false)
+  const [confirmClear,setConfirmClear] = useState(false)
+  const [confirmDelete,setConfirmDelete] = useState<string|null>(null)
   const [now,setNow] = useState(()=>Date.now()/1000)
   const closeButton = useRef<HTMLButtonElement>(null)
   const active = !!scan && ['queued','running'].includes(scan.status)
@@ -232,9 +234,19 @@ function App(){
     setStopping(true)
     try{await jsonFetch(`/api/scans/${scan.id}/cancel`,{method:'POST'})}catch(e){setError((e as Error).message);setStopping(false)}
   }
-  async function openScan(id:string){
+  async function openScan(id:string,next:View='overview'){
     setError('');setSelected(null)
-    try{setScan(await jsonFetch<Scan>(`/api/scans/${id}`));go('overview',{scanId:id})}catch(e){setError((e as Error).message)}
+    try{setScan(await jsonFetch<Scan>(`/api/scans/${id}`));go(next,{scanId:id})}catch(e){setError((e as Error).message)}
+  }
+  async function removeScans(id?:string){
+    setError('')
+    try{
+      await jsonFetch(id?`/api/scans/${id}`:'/api/scans',{method:'DELETE'})
+      const items=await jsonFetch<ScanListItem[]>('/api/scans')
+      setHistory(items)
+      if(scan&&!items.some(item=>item.id===scan.id)){setScan(null);setSelected(null);go('overview',{scanId:null,replace:true})}
+    }catch(e){setError((e as Error).message)}
+    finally{setConfirmClear(false);setConfirmDelete(null)}
   }
   async function requestDraft(item:Finding){
     if(!scan) return
@@ -316,8 +328,17 @@ function App(){
       <ol className="step-list">{steps.map(step=>{const seconds=step.started_at?(step.finished_at||now)-step.started_at:null;return <li key={step.id} className={'step '+step.state}><StateIcon state={step.state}/><span className="step-label"><strong>{step.label}</strong><small>{step.summary||stepWords[step.state]||step.state}</small></span><span className="step-time">{seconds===null?'':elapsed(seconds)}</span></li>})}</ol>
     </section>}
     <section className="card history">
-      <div className="card-head"><h2><History size={16} aria-hidden="true"/>Recent scans</h2><span className="hint-text">{history.length} in local history</span></div>
-      {history.length?<div className="rows">{history.map(item=>{let target:Record<string,string|null>={};try{target=JSON.parse(item.target)}catch{/* older rows may hold invalid JSON */}return <button key={item.id} className={'row'+(scan?.id===item.id?' current':'')} onClick={()=>openScan(item.id)}><StateIcon state={item.status}/><span className="row-main"><strong>{target.url||target.repo_url||target.local_path||'Unknown target'}</strong><small><code>#{shortId(item.id)}</code> · {formatTime(item.created)}</small></span><StatusBadge status={item.status}/><ChevronRight size={16} aria-hidden="true"/></button>})}</div>:<EmptyState icon={History} title="Your first scan will appear here"/>}
+      <div className="card-head"><h2><History size={16} aria-hidden="true"/>Recent scans</h2><div className="head-actions"><span className="hint-text">{history.length} stored on this computer</span>{history.some(item=>!['queued','running'].includes(item.status))&&(confirmClear
+        ?<span className="confirm" role="group" aria-label="Confirm clearing history"><span>Delete all finished scans?</span><button type="button" className="btn ghost sm" onClick={()=>setConfirmClear(false)}>Cancel</button><button type="button" className="btn danger sm" onClick={()=>removeScans()}><Trash2 size={14} aria-hidden="true"/>Delete</button></span>
+        :<button type="button" className="btn ghost sm" onClick={()=>setConfirmClear(true)}><Trash2 size={14} aria-hidden="true"/>Clear history</button>)}</div></div>
+      {history.length?<div className="rows scroll">{history.map(item=>{let target:Record<string,string|null>={};try{target=JSON.parse(item.target)}catch{/* older rows may hold invalid JSON */}const running=['queued','running'].includes(item.status);const hasReport=['completed','cancelled'].includes(item.status);const body=<><StateIcon state={item.status}/><span className="row-main"><strong>{target.url||target.repo_url||target.local_path||'Unknown target'}</strong><small><code>#{shortId(item.id)}</code> · {formatTime(item.created)}</small>{item.status==='failed'&&<small className="row-error">{item.error||item.progress||'The scan stopped with an error before producing a report.'}</small>}</span><StatusBadge status={item.status}/></>;return <div key={item.id} className={'row-wrap'+(scan?.id===item.id?' current':'')}>
+        {hasReport||running
+          ?<button className="row" onClick={()=>openScan(item.id,hasReport?'findings':'overview')}>{body}<span className="row-cta">{hasReport?'View report':'View progress'}<ChevronRight size={15} aria-hidden="true"/></span></button>
+          :<div className="row static">{body}</div>}
+        {!running&&(confirmDelete===item.id
+          ?<span className="confirm" role="group" aria-label={`Confirm deleting scan #${shortId(item.id)}`}><button type="button" className="btn ghost sm" onClick={()=>setConfirmDelete(null)}>Cancel</button><button type="button" className="btn danger sm" onClick={()=>removeScans(item.id)}>Delete</button></span>
+          :<button type="button" className="icon-btn ghost" aria-label={`Delete scan #${shortId(item.id)}`} title="Delete this scan" onClick={()=>setConfirmDelete(item.id)}><Trash2 size={15} aria-hidden="true"/></button>)}
+      </div>})}</div>:<EmptyState icon={History} title="Your first scan will appear here"/>}
     </section>
   </>
 
@@ -328,7 +349,7 @@ function App(){
       <button type="button" className={'chip'+(severity==='all'?' on':'')} aria-pressed={severity==='all'} onClick={()=>setSeverity('all')}>All<span className="chip-count">{report?.findings.length??0}</span></button>
       {severityLevels.filter(level=>counts[level]).map(level=><button type="button" key={level} className={`chip sev-${level}`+(severity===level?' on':'')} aria-pressed={severity===level} onClick={()=>setSeverity(level)}><SeverityIcon level={level}/>{severityMeta[level].label}<span className="chip-count">{counts[level]}</span></button>)}
     </div>
-    {filtered.length?<div className="card list">{filtered.map(item=><button key={item.id} className="finding-row" onClick={()=>selectFinding(item)}><SeverityIcon level={item.severity}/><span className="row-main"><strong>{item.title}</strong><span className="row-meta"><span className="tag">{scannerLabel(item.scanner)}</span>{item.location&&<code>{item.location}</code>}</span></span><SeverityBadge level={item.severity}/><ChevronRight size={16} aria-hidden="true"/></button>)}</div>
+    {filtered.length?<div className="card list scroll tall">{filtered.map(item=><button key={item.id} className="finding-row" onClick={()=>selectFinding(item)}><SeverityIcon level={item.severity}/><span className="row-main"><strong>{item.title}</strong><span className="row-meta"><span className="tag">{scannerLabel(item.scanner)}</span>{item.location&&<code>{item.location}</code>}</span></span><SeverityBadge level={item.severity}/><ChevronRight size={16} aria-hidden="true"/></button>)}</div>
       :<div className="card"><EmptyState icon={ShieldCheck} title={report?'No findings in this view':'No report selected'}>{report?'Zero findings is not proof of safety. Check Coverage to see which checks completed and which need another run.':'Start a scan from Overview to generate findings.'}</EmptyState></div>}
   </>
 
@@ -341,10 +362,10 @@ function App(){
     </div>
     <div className="two-col">
       <Panel title="Scanner stages" icon={ListChecks} meta={report?`${report.stages.length} stages`:undefined}>
-        {report?.stages.length?<div className="rows">{report.stages.map(stage=><div key={stage.id} className="stage-row"><StateIcon state={stage.state}/><span className="row-main"><strong>{stage.label}</strong><small>{stage.summary}</small>{typeof stage.details?.diagnostic==='string'&&stage.details.diagnostic&&<details className="diagnostic"><summary>Scanner output</summary><pre>{stage.details.diagnostic}</pre></details>}</span><StateBadge state={stage.state}/></div>)}</div>:<EmptyState icon={ListChecks} title="No stages recorded yet"/>}
+        {report?.stages.length?<div className="rows scroll tall">{report.stages.map(stage=><div key={stage.id} className="stage-row"><StateIcon state={stage.state}/><span className="row-main"><strong>{stage.label}</strong><small>{stage.summary}</small>{typeof stage.details?.diagnostic==='string'&&stage.details.diagnostic&&<details className="diagnostic"><summary>Scanner output</summary><pre>{stage.details.diagnostic}</pre></details>}</span><StateBadge state={stage.state}/></div>)}</div>:<EmptyState icon={ListChecks} title="No stages recorded yet"/>}
       </Panel>
       <Panel title="Coverage gaps" icon={Route} meta={report?`${report.limitations.length} to review`:undefined}>
-        {report?.limitations.length?<ol className="gaps">{report.limitations.map((item,index)=><li key={`${item.code}-${index}`}><span className="gap-number">{String(index+1).padStart(2,'0')}</span><div><strong>{item.message}</strong><p>{item.resolution}</p>{item.scanner&&<span className="tag">{item.scanner.split(', ').map(scannerLabel).join(', ')}</span>}</div></li>)}</ol>:<EmptyState icon={BadgeCheck} title="No limitations recorded">This scan reported no coverage gaps.</EmptyState>}
+        {report?.limitations.length?<ol className="gaps scroll tall">{report.limitations.map((item,index)=><li key={`${item.code}-${index}`}><span className="gap-number">{String(index+1).padStart(2,'0')}</span><div><strong>{item.message}</strong><p>{item.resolution}</p>{item.scanner&&<span className="tag">{item.scanner.split(', ').map(scannerLabel).join(', ')}</span>}</div></li>)}</ol>:<EmptyState icon={BadgeCheck} title="No limitations recorded">This scan reported no coverage gaps.</EmptyState>}
       </Panel>
     </div>
   </>
@@ -353,22 +374,22 @@ function App(){
     <PageHeader title="Assets" description="What this assessment actually observed. Counts cover the scoped scan only, not a complete inventory." actions={exportButton}/>
     <div className="two-col">
       <Panel title="Ports and services" icon={Network} meta={ports?.length?`${ports.length} recorded`:undefined}>
-        {ports?.length?<div className="rows">{ports.map((port,index)=><div className="asset-row" key={`${port.host}-${port.port}-${index}`}><code className="port">{port.port}<small>/{port.protocol}</small></code><span className="row-main"><strong>{port.service}{port.version&&` ${port.version}`}</strong><small>{port.host}</small></span><span className={`badge port-${port.state}`}>{port.state}</span></div>)}</div>:<EmptyState icon={Network} title="No port inventory">Check scanner setup and the Coverage page.</EmptyState>}
+        {ports?.length?<div className="rows scroll">{ports.map((port,index)=><div className="asset-row" key={`${port.host}-${port.port}-${index}`}><code className="port">{port.port}<small>/{port.protocol}</small></code><span className="row-main"><strong>{port.service}{port.version&&` ${port.version}`}</strong><small>{port.host}</small></span><span className={`badge port-${port.state}`}>{port.state}</span></div>)}</div>:<EmptyState icon={Network} title="No port inventory">Check scanner setup and the Coverage page.</EmptyState>}
       </Panel>
       <Panel title="Discovered routes" icon={Route} meta={urls?.length?`${urls.length} routes`:undefined}>
-        {urls?.length?<ul className="mono-list">{urls.map((route,index)=><li key={`${route}-${index}`}><code>{route}</code></li>)}</ul>:<EmptyState icon={Route} title="No routes recorded">Check crawler status and target access.</EmptyState>}
+        {urls?.length?<ul className="mono-list scroll">{urls.map((route,index)=><li key={`${route}-${index}`}><code>{route}</code></li>)}</ul>:<EmptyState icon={Route} title="No routes recorded">Check crawler status and target access.</EmptyState>}
       </Panel>
       <Panel title="JSON endpoints" icon={FileCode2}>
-        {apiEndpoints?.length?<ul className="mono-list">{apiEndpoints.map((item,index)=><li key={`${item.method}-${item.url}-${index}`}><span className="method">{item.method}</span><code>{item.url}</code><span className="status-code">{item.status??'?'}</span></li>)}</ul>:<EmptyState icon={FileCode2} title="No JSON endpoints observed">This is not a complete API count.</EmptyState>}
+        {apiEndpoints?.length?<ul className="mono-list scroll">{apiEndpoints.map((item,index)=><li key={`${item.method}-${item.url}-${index}`}><span className="method">{item.method}</span><code>{item.url}</code><span className="status-code">{item.status??'?'}</span></li>)}</ul>:<EmptyState icon={FileCode2} title="No JSON endpoints observed">This is not a complete API count.</EmptyState>}
       </Panel>
       <Panel title="Rendered pages and forms" icon={Globe}>
-        {renderedPages?.length?<ul className="mono-list">{renderedPages.map((item,index)=><li key={`${item.url}-${index}`}><span className="status-code">{item.status??'?'}</span><span className="grow">{item.title||item.url}</span><code>{item.url}</code></li>)}{renderedForms?.map((item,index)=><li key={`${item.page}-form-${index}`}><span className="method">{item.method}</span><span className="grow">Form → {item.action}</span><code>{item.fields.map(field=>field.type).join(', ')}</code></li>)}</ul>:<EmptyState icon={Globe} title="No rendered-page inventory">Runs in Full scope with the browser runtime ready.</EmptyState>}
+        {renderedPages?.length?<ul className="mono-list scroll">{renderedPages.map((item,index)=><li key={`${item.url}-${index}`}><span className="status-code">{item.status??'?'}</span><span className="grow">{item.title||item.url}</span><code>{item.url}</code></li>)}{renderedForms?.map((item,index)=><li key={`${item.page}-form-${index}`}><span className="method">{item.method}</span><span className="grow">Form → {item.action}</span><code>{item.fields.map(field=>field.type).join(', ')}</code></li>)}</ul>:<EmptyState icon={Globe} title="No rendered-page inventory">Runs in Full scope with the browser runtime ready.</EmptyState>}
       </Panel>
       <Panel title="Browser API traffic" icon={Activity}>
-        {browserApis?.length?<ul className="mono-list">{browserApis.map((item,index)=><li key={`${item.method}-${item.url}-${index}`}><span className="method">{item.method}</span><code>{item.url}</code><span className="status-code">{item.status??'?'}</span></li>)}</ul>:<EmptyState icon={Activity} title="No JSON responses observed in rendered pages"/>}
+        {browserApis?.length?<ul className="mono-list scroll">{browserApis.map((item,index)=><li key={`${item.method}-${item.url}-${index}`}><span className="method">{item.method}</span><code>{item.url}</code><span className="status-code">{item.status??'?'}</span></li>)}</ul>:<EmptyState icon={Activity} title="No JSON responses observed in rendered pages"/>}
       </Panel>
       <Panel title="Configured journeys" icon={KeyRound}>
-        {journeyResults?.length?<div className="rows">{journeyResults.map((item,index)=><div className="asset-row" key={`${item.name}-${index}`}><StateIcon state={item.passed?'completed':'partial'}/><span className="row-main"><strong>{item.name}</strong><small>{item.completed_steps} steps · {item.covers.join(', ')||'coverage unspecified'}{item.issues.length?` · ${item.issues.map(issue=>issue.type).join(', ')}`:''}</small></span><StateBadge state={item.passed?'completed':'partial'}/></div>)}</div>:<EmptyState icon={KeyRound} title="No account journey configured">Add a journey file with test accounts in Full scope.</EmptyState>}
+        {journeyResults?.length?<div className="rows scroll">{journeyResults.map((item,index)=><div className="asset-row" key={`${item.name}-${index}`}><StateIcon state={item.passed?'completed':'partial'}/><span className="row-main"><strong>{item.name}</strong><small>{item.completed_steps} steps · {item.covers.join(', ')||'coverage unspecified'}{item.issues.length?` · ${item.issues.map(issue=>issue.type).join(', ')}`:''}</small></span><StateBadge state={item.passed?'completed':'partial'}/></div>)}</div>:<EmptyState icon={KeyRound} title="No account journey configured">Add a journey file with test accounts in Full scope.</EmptyState>}
       </Panel>
       <Panel title="TLS and page quality" icon={Gauge}>
         {tlsDetails?.protocol&&<div className="asset-row"><LockKeyhole size={16} aria-hidden="true"/><span className="row-main"><strong>{tlsDetails.protocol}</strong><small>{tlsDetails.cipher} · certificate {tlsDetails.days_until_expiry} days remaining</small></span></div>}
@@ -376,11 +397,11 @@ function App(){
         {!tlsDetails?.protocol&&!performanceScores&&<EmptyState icon={Gauge} title="No TLS or Lighthouse measurements"/>}
       </Panel>
       <Panel title="API contract" icon={ScrollText}>
-        {apiContract?.declared?.length?<ul className="mono-list">{apiContract.declared.map((item,index)=><li key={`${item.method}-${item.path}-${index}`}><span className="method">{item.method}</span><code>{item.path}</code><span className={'badge '+(item.observed?'state-completed':'state-skipped')}>{item.observed?'Observed':'Not observed'}</span></li>)}{apiContract.undocumented_observed?.map((item,index)=><li key={`${item.method}-${item.url}-${index}`}><span className="method">{item.method}</span><code>{item.url}</code><span className="badge state-partial">Not in spec</span></li>)}</ul>:<EmptyState icon={ScrollText} title="No OpenAPI contract supplied"/>}
+        {apiContract?.declared?.length?<ul className="mono-list scroll">{apiContract.declared.map((item,index)=><li key={`${item.method}-${item.path}-${index}`}><span className="method">{item.method}</span><code>{item.path}</code><span className={'badge '+(item.observed?'state-completed':'state-skipped')}>{item.observed?'Observed':'Not observed'}</span></li>)}{apiContract.undocumented_observed?.map((item,index)=><li key={`${item.method}-${item.url}-${index}`}><span className="method">{item.method}</span><code>{item.url}</code><span className="badge state-partial">Not in spec</span></li>)}</ul>:<EmptyState icon={ScrollText} title="No OpenAPI contract supplied"/>}
       </Panel>
     </div>
     <Panel title="Technologies" icon={Fingerprint}>
-      {technologies?.length?<div className="chips">{technologies.map(item=><span className="tag" key={item}>{item}</span>)}</div>:<EmptyState icon={Fingerprint} title="No technology profile available"/>}
+      {technologies?.length?<div className="chips scroll short">{technologies.map(item=><span className="tag" key={item}>{item}</span>)}</div>:<EmptyState icon={Fingerprint} title="No technology profile available"/>}
     </Panel>
   </>
 

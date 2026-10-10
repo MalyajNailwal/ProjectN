@@ -114,7 +114,7 @@ def full_config():
 @app.get("/api/scans")
 def scans():
     with connection() as db:
-        return [dict(row) for row in db.execute("SELECT id, created, status, progress, target FROM scans ORDER BY created DESC LIMIT 50")]
+        return [dict(row) for row in db.execute("SELECT id, created, status, progress, target, error FROM scans ORDER BY created DESC LIMIT 50")]
 
 
 @app.post("/api/scans", status_code=202)
@@ -170,6 +170,30 @@ def scan_detail(scan_id: str):
     item["result"] = json.loads(item["result"]) if item["result"] else None
     item["steps"] = json.loads(item["steps"]) if item["steps"] else []
     return item
+
+
+@app.delete("/api/scans/{scan_id}")
+def delete_scan(scan_id: str):
+    if scan_id in ACTIVE:
+        raise HTTPException(409, "Stop this scan before deleting it.")
+    with connection() as db:
+        deleted = db.execute("DELETE FROM scans WHERE id = ?", (scan_id,)).rowcount
+        db.commit()
+    if not deleted:
+        raise HTTPException(404, "Scan not found")
+    return {"deleted": deleted}
+
+
+@app.delete("/api/scans")
+def clear_scans():
+    """Delete every scan except those still running in this process, then shrink the database file."""
+    running = list(ACTIVE)
+    with connection() as db:
+        keep = f" WHERE id NOT IN ({','.join('?' * len(running))})" if running else ""
+        deleted = db.execute("DELETE FROM scans" + keep, running).rowcount
+        db.commit()
+        db.execute("VACUUM")
+    return {"deleted": deleted, "kept_running": len(running)}
 
 
 @app.post("/api/scans/{scan_id}/cancel", status_code=202)

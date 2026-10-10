@@ -234,7 +234,6 @@ p{margin:0}
 .rows>:first-child,.list>:first-child{border-top:0}
 .row,.finding-row{border-radius:0;transition:background .12s}
 .row:hover,.finding-row:hover{background:var(--surface-2)}
-.row.current{background:var(--surface-2)}
 .row-main{flex:1;min-width:0;display:grid;gap:3px}
 .row-main strong{font-weight:580;font-size:13.5px;overflow-wrap:anywhere}
 .row-main small{color:var(--text-3);font-size:12px;overflow-wrap:anywhere}
@@ -320,6 +319,33 @@ p{margin:0}
 .draft ol{margin:0;padding-left:20px}
 .draft small{color:var(--text-3)}
 
+/* Scroll areas keep long lists inside their panel instead of stretching the page. */
+.scroll{max-height:420px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent;margin-right:-8px;padding-right:8px}
+.scroll.tall{max-height:min(70vh,760px)}
+.scroll.short{max-height:220px}
+.scroll::-webkit-scrollbar{width:10px}
+.scroll::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:10px;border:3px solid var(--surface)}
+.scroll::-webkit-scrollbar-track{background:transparent}
+.list.scroll{margin-right:0;padding-right:12px}
+
+/* History actions */
+.head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.btn.sm{height:30px;padding:0 10px;font-size:12.5px;border-radius:8px}
+.btn.ghost{background:transparent;border-color:var(--border);color:var(--text-2)}
+.btn.ghost:hover{background:var(--surface-2);color:var(--text)}
+.confirm{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-2)}
+.row-wrap{display:flex;align-items:center;gap:6px;border-radius:8px}
+.row-wrap .row{flex:1;min-width:0}
+.row-wrap.current .row{background:var(--surface-2)}
+.row-cta{display:inline-flex;align-items:center;gap:2px;flex:none;color:var(--text-3);font-size:12.5px;font-weight:560;white-space:nowrap}
+.row:hover .row-cta{color:var(--text)}
+.row.static{cursor:default}
+.row.static:hover{background:none}
+.row-error{color:var(--danger)!important}
+.icon-btn.ghost{border-color:transparent;background:transparent;color:var(--text-3);opacity:.6}
+.row-wrap:hover .icon-btn.ghost,.icon-btn.ghost:focus-visible{opacity:1}
+.icon-btn.ghost:hover{color:var(--danger);background:color-mix(in srgb,var(--danger) 9%,transparent)}
+
 /* Responsive */
 @media (max-width:1100px){
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -336,6 +362,7 @@ p{margin:0}
   .sidebar-foot{margin:0}
   .topbar{padding:0 16px}
   .local{display:none}
+  .row-cta{font-size:0}
   .content{padding:18px 16px 48px}
   .stats,.stats.three{grid-template-columns:repeat(2,minmax(0,1fr))}
   .field-pair,.profiles,.option-grid{grid-template-columns:1fr}
