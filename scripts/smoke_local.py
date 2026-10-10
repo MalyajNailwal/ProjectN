@@ -70,6 +70,8 @@ def scan_fixture(base: str, required_stages: list[str], profile: str, fields: di
                     raise RuntimeError("Fixture scan completed without a usable report")
                 for stage in report["stages"]:
                     print(f"  {stage['id']}: {stage['state']} ({stage.get('summary', '')})")
+                    if stage.get("details", {}).get("diagnostic"):
+                        print("    " + stage["details"]["diagnostic"].replace("\n", "\n    "))
                 for stage_id in required_stages:
                     stage = next((item for item in report["stages"] if item["id"] == stage_id), None)
                     if not stage or stage["state"] not in {"completed", "partial"}:

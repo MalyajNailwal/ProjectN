@@ -268,6 +268,15 @@ def readiness(spec: dict) -> dict:
     return {"id": spec["id"], "label": spec["label"], "ready": not missing, "source_present": (source / ".git").exists(), "source_revision": revision, "source_version": source_version, "runtime_version": runtime_version, "runtime_origin": "Windows Nmap executable" if spec["id"] == "ports" and os.name == "nt" else "version-matched local package" if spec["id"] in {"static", "browser", "journeys", "accessibility", "performance"} else "local source build or source script", "rules_revision": rules_revision, "rules_dirty": rules_dirty, "executable": executable, "runtime": runtime, "limitations": missing, "resolution": "Install official Nmap for Windows and add it to PATH or set PROJECTN_SCANNER_PORTS; the source checkout is kept separately." if spec["id"] == "ports" and os.name == "nt" and missing else f"Run `python scripts/setup_native.py {spec['setup']}` from the ProjectN folder (on Windows `py -3`), or set PROJECTN_SCANNER_{spec['id'].upper()} to your own build, then refresh Tool setup." if missing else None}
 
 
+SECRET_TEXT = re.compile(r"(?i)((?:api[_-]?key|token|secret|password|passwd|authorization|cookie)[\"']?\s*[=:]\s*)\S+|[A-Za-z0-9_+=-]{32,}")
+
+
+def diagnostic(*outputs: str | None) -> str:
+    """Last lines of a failed scanner's output, with credential-like values masked, for the report."""
+    lines = [line for text in outputs for line in (text or "").splitlines() if line.strip()][-12:]
+    return SECRET_TEXT.sub(lambda match: (match.group(1) or "") + "[redacted]", "\n".join(lines))[-1500:]
+
+
 def gap(code: str, message: str, resolution: str, scanner: str | None = None) -> dict:
     return {"code": code, "message": message, "resolution": resolution, "scanner": scanner}
 
@@ -495,7 +504,9 @@ def scan_one(spec: dict, values: dict, work: Path, cancel=None) -> tuple[list[di
             acceptable = False
         # A scanner that exits with an error and observed nothing has not partially covered anything.
         state = "completed" if acceptable and not extra_issues else "partial" if output.exists() and (acceptable or details.get("observed")) else "failed"
-        issues = extra_issues if acceptable else extra_issues + [gap("scanner_error", f"{spec['label']} exited with code {result.returncode}.", "Inspect the scanner diagnostic, fix the setup or target access, then retry.", spec["id"])]
+        if not acceptable:
+            details["diagnostic"] = diagnostic(result.stdout, result.stderr)
+        issues = extra_issues if acceptable else extra_issues + [gap("scanner_error", f"{spec['label']} exited with code {result.returncode}.", "Read the scanner output shown under this stage on the Coverage page, fix the setup or target access it points to, then retry.", spec["id"])]
         if oob_issue:
             issues.append(oob_issue)
         elif spec["id"] == "templates" and full and values.get("oob_server") and not details.get("oob_interactions"):

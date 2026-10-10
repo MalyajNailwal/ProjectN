@@ -41,11 +41,12 @@ class TargetValidationTests(unittest.TestCase):
 
         def invalid_rules(argv, *_args, **_options):
             Path(argv[1]).write_text(json.dumps({"results": [], "errors": [{"type": "SemgrepError"}], "paths": {"scanned": []}}))
-            return SimpleNamespace(returncode=7)
+            return SimpleNamespace(returncode=7, stdout="", stderr="invalid configuration file found\napi_key=abcdef0123456789")
 
         with tempfile.TemporaryDirectory() as temp, patch("app.core.readiness", return_value=ready), patch("app.core.run_tool", side_effect=invalid_rules):
             _, stage, gaps = scan_one(spec, {"profile": "standard"}, Path(temp))
         self.assertEqual(stage["state"], "failed")
+        self.assertEqual(stage["details"]["diagnostic"], "invalid configuration file found\napi_key=[redacted]")
         self.assertIn("scanner_error", {item["code"] for item in gaps})
 
     def test_dependency_scan_reports_checked_lockfiles_or_their_absence(self):
