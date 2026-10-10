@@ -13,12 +13,12 @@ ProjectN's root [MIT license](LICENSE) covers ProjectN's own code and documentat
 - MIT and Apache 2.0 components (Nuclei, nuclei-templates, Katana, Interactsh, Gitleaks, OSV-Scanner, ZAP and its add-ons, Playwright, Lighthouse): include each component's license and any NOTICE file.
 - Semgrep engine (LGPL 2.1), WhatWeb (GPL v2), and axe-core (MPL 2.0): ship them as separate programs or files with their license texts, and make their source code available alongside (WhatWeb and axe-core are already distributed as source).
 - Nmap (Nmap Public Source License): either leave it out and let users install it, as the Windows setup already does, or redistribute it under its license terms, which include providing source code. A proprietary or commercial product can use Nmap's OEM licensing.
-- Semgrep rules: leave them out of the bundle and let each user fetch them for their own internal use with `scripts/clone_sources.py`, which is how ProjectN already works. To ship rules inside a bundle, use rules you wrote, rules under an open license, or written permission from Semgrep.
+- Semgrep rules: leave them out of the bundle and let each user fetch them for their own internal use with `scripts/clone_sources.py`, which is how ProjectN already works. To ship rules inside a bundle, use ProjectN's own rules in [`rules/`](rules/README.md), rules under an open license, or written permission from Semgrep.
 
 **Offer ProjectN as a hosted service (SaaS): doable, this way:**
 
 - Show a notice such as "This service uses the Nmap Security Scanner" with a link to https://nmap.org, as Nmap's license requires for external deployments.
-- Use source-analysis rules that are licensed for use in a service: your own rules, rules under an open license, or permission from Semgrep. The Semgrep Rules License covers internal use, not making the rules available to others as a service.
+- Use source-analysis rules that are licensed for use in a service: ProjectN's own rules in [`rules/`](rules/README.md), other rules under an open license, or permission from Semgrep. The Semgrep Rules License covers internal use, not making the rules available to others as a service.
 - Keep the other components' license notices available to your users.
 
 This page is a practical summary, not legal advice. The license text in each checkout is authoritative, and downloaded runtimes and dependencies (browsers, the JDK, npm and Go modules) carry their own terms.

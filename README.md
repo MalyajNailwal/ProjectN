@@ -88,7 +88,7 @@ Only scan websites, networks, and code you are authorized to assess.
 npm run build --prefix web
 ```
 
-`config/scanners.json` holds scanner paths, arguments, and timeouts; `config/source-lock.json` pins upstream revisions (`python scripts/clone_sources.py --verify` checks local checkouts offline); `config/coverage.json` maps missing stages to limitations and next actions. `PROJECTN_SCANNER_<ID>` points a scanner at a custom executable, and `PROJECTN_DATA_DIR` moves scan history out of `data/`. Third-party sources, binaries, runtimes, virtual environments, and scan data stay in Git-ignored `tools/` and `data/`; never commit them.
+ProjectN's own checks live in [`rules/`](rules/README.md). `config/scanners.json` holds scanner paths, arguments, and timeouts; `config/source-lock.json` pins upstream revisions, which change only when you run `python scripts/clone_sources.py --update` (`--upstream` shows what is newer, `--verify` checks local checkouts offline; see [CONTRIBUTING](CONTRIBUTING.md#update-scanner-versions)); `config/coverage.json` maps missing stages to limitations and next actions. `PROJECTN_SCANNER_<ID>` points a scanner at a custom executable, and `PROJECTN_DATA_DIR` moves scan history out of `data/`. Third-party sources, binaries, runtimes, virtual environments, and scan data stay in Git-ignored `tools/` and `data/`; never commit them.
 
 ## Documentation
 
