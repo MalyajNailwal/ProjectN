@@ -28,7 +28,7 @@ class FixtureServer(http.server.ThreadingHTTPServer):
         pass
 
 
-def scan_fixture(base: str, required_stages: list[str]) -> None:
+def scan_fixture(base: str, required_stages: list[str], profile: str) -> None:
     site = ROOT / "tests/fixtures/site"
     handler = functools.partial(FixtureHandler, directory=str(site))
     server = FixtureServer(("127.0.0.1", 0), handler)
@@ -36,7 +36,7 @@ def scan_fixture(base: str, required_stages: list[str]) -> None:
     thread.start()
     try:
         target = f"http://127.0.0.1:{server.server_port}/"
-        request = urllib.request.Request(base + "/api/scans", data=json.dumps({"url": target, "profile": "standard"}).encode(), headers={"Content-Type": "application/json"}, method="POST")
+        request = urllib.request.Request(base + "/api/scans", data=json.dumps({"url": target, "profile": profile, "authorized_intrusive": profile == "full"}).encode(), headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(request, timeout=5) as response:
             scan_id = json.load(response)["id"]
         deadline = time.monotonic() + 180
@@ -66,6 +66,7 @@ def scan_fixture(base: str, required_stages: list[str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--require-stage", action="append", default=[], help="Require a scanner stage to finish the fixture scan")
+    parser.add_argument("--profile", choices=("standard", "full"), default="standard", help="Fixture scan profile")
     options = parser.parse_args()
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 0))
@@ -93,7 +94,7 @@ def main() -> int:
                 if health.get("status") != "ok" or "ProjectN" not in page or not isinstance(scanners, list):
                     raise RuntimeError("App returned an incomplete health, dashboard, or scanner response")
                 print(f"Native app smoke passed: dashboard, health, and {len(scanners)} scanner status entries")
-                scan_fixture(base, options.require_stage)
+                scan_fixture(base, options.require_stage, options.profile)
                 return 0
             except (urllib.error.URLError, TimeoutError):
                 time.sleep(0.25)
