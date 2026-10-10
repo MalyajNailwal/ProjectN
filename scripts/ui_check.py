@@ -24,13 +24,13 @@ def main(base: str, target: str, screenshot: str, timeout_seconds: float) -> int
         page.locator(".steps-section .step").first.wait_for(timeout=60_000)
         page.get_by_role("progressbar", name="Scan progress").wait_for()
         # A scan with few installed scanners can finish before the first poll, so the live controls are checked only while it runs.
-        if page.locator(".run-state.running, .run-state.queued").count():
+        if page.locator(".run-card .run-state.running, .run-card .run-state.queued").count():
             page.get_by_role("heading", name="What is happening now").wait_for()
             page.get_by_role("button", name="Stop scan").wait_for()
             print("UI: scan launched from the form; live progress, running step list, and Stop control are shown", flush=True)
         else:
             print("UI: scan launched from the form and finished before the first progress poll; step list and progress bar are shown", flush=True)
-        page.locator(".run-state.completed").wait_for(timeout=timeout_seconds * 1000)
+        page.locator(".run-card .run-state.completed").wait_for(timeout=timeout_seconds * 1000)
         percent = page.locator(".run-progress-head strong").inner_text()
         if percent != "100%":
             raise RuntimeError(f"Completed scan shows {percent} instead of 100%")
