@@ -15,13 +15,13 @@ type ScanListItem = Pick<Scan,'id'|'created'|'status'|'progress'|'error'|'finish
 type Comparison = {summary:{still_present:number;not_observed_on_rescan:number;not_verifiable:number;new:number}}
 type RemediationDraft = {summary:string;fix_steps:string[];verification:string;uncertainty:string;citation:string;model:string;status:string}
 type AssistantStatus = {provider:string;external:boolean;configured:boolean;mode:string}
-type FullConfig = {port_range:string;crawl_depth:number;crawl_duration_minutes:number;template_rate:number;inventory_limit:number;browser_page_limit:number}
+type FullConfig = {port_depth:string;port_range:string;crawl_depth:number;crawl_duration_minutes:number;template_rate:number;inventory_limit:number;browser_page_limit:number}
 type View = 'overview'|'findings'|'coverage'|'assets'|'setup'
 
 const nav: {id:View;label:string;icon:React.ElementType;group:string}[] = [
   {id:'overview',label:'Overview',icon:LayoutDashboard,group:'Assessment'},
-  {id:'findings',label:'Findings',icon:ShieldAlert,group:'Assessment'},
   {id:'coverage',label:'Coverage',icon:Radar,group:'Assessment'},
+  {id:'findings',label:'Findings',icon:ShieldAlert,group:'Assessment'},
   {id:'assets',label:'Assets',icon:Boxes,group:'Assessment'},
   {id:'setup',label:'Tool setup',icon:Cpu,group:'System'},
 ]
@@ -91,6 +91,7 @@ function App(){
   const [oobTokenEnv,setOobTokenEnv] = useState('')
   const [profile,setProfile] = useState<'standard'|'deep'|'full'>('standard')
   const [authorized,setAuthorized] = useState(false)
+  const [portDepth,setPortDepth] = useState<'quick'|'standard'|'thorough'|'full'|'custom'>('standard')
   const [portRange,setPortRange] = useState('')
   const [crawlDepth,setCrawlDepth] = useState('')
   const [crawlMinutes,setCrawlMinutes] = useState('')
@@ -226,7 +227,7 @@ function App(){
   async function submit(event:React.FormEvent){
     event.preventDefault();setError('');setSubmitError('');setBusy(true)
     try{
-      const fullOptions=profile==='full'?{port_range:portRange.trim()||null,crawl_depth:crawlDepth?Number(crawlDepth):null,crawl_duration_minutes:crawlMinutes?Number(crawlMinutes):null,template_rate:templateRate?Number(templateRate):null,inventory_limit:inventoryLimit?Number(inventoryLimit):null,browser_page_limit:browserPageLimit?Number(browserPageLimit):null}:{}
+      const fullOptions=profile==='full'?{port_depth:portDepth,port_range:portDepth==='custom'?(portRange.trim()||null):null,crawl_depth:crawlDepth?Number(crawlDepth):null,crawl_duration_minutes:crawlMinutes?Number(crawlMinutes):null,template_rate:templateRate?Number(templateRate):null,inventory_limit:inventoryLimit?Number(inventoryLimit):null,browser_page_limit:browserPageLimit?Number(browserPageLimit):null}:{}
       const enteredUrl=url.trim()
       const normalizedUrl=enteredUrl&&!enteredUrl.includes('://')?`https://${enteredUrl}`:enteredUrl
       const result=await jsonFetch<{id:string}>('/api/scans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:normalizedUrl||null,repo_url:repo.trim()||null,local_path:folder.trim()||null,journey_file:profile==='full'?journeyFile.trim()||null:null,api_spec_file:apiSpecFile.trim()||null,oob_server:profile==='full'?oobServer.trim()||null:null,oob_token_env:profile==='full'?oobTokenEnv.trim()||null:null,profile,authorized_intrusive:authorized,...fullOptions})})
@@ -291,8 +292,16 @@ function App(){
           <fieldset className="profiles"><legend className="field-label">Scan profile</legend>{profiles.map(item=><button type="button" key={item.id} className={'profile'+(profile===item.id?' on':'')} aria-pressed={profile===item.id} onClick={()=>setProfile(item.id)}><item.icon size={16} aria-hidden="true"/><span><strong>{item.title}</strong><small>{item.text}</small></span></button>)}</fieldset>
           {profile==='full'&&<div className="full-options">
             <p className="field-label">Full scan limits <em>blank uses config/full_scan.json</em></p>
+            <div className="port-depth-row">
+              <span className="field-label">Port scan depth</span>
+              <div className="port-depth-options">
+                {([['quick','Quick','top 100, seconds'],['standard','Standard','top 1000, recommended'],['thorough','Thorough','top 5000'],['full','All 65535','can take hours'],['custom','Custom range','set it below']] as const).map(([id,label,hint])=>
+                  <button type="button" key={id} className={'depth-chip'+(portDepth===id?' on':'')} aria-pressed={portDepth===id} onClick={()=>setPortDepth(id)}><strong>{label}</strong><small>{hint}</small></button>
+                )}
+              </div>
+            </div>
             <div className="option-grid">
-              <label>TCP ports<input value={portRange} onChange={e=>setPortRange(e.target.value)} placeholder={fullDefaults?.port_range||''}/></label>
+              {portDepth==='custom'&&<label>TCP ports<input value={portRange} onChange={e=>setPortRange(e.target.value)} placeholder={fullDefaults?.port_range||''}/></label>}
               <label>Crawl depth<input type="number" min="1" value={crawlDepth} onChange={e=>setCrawlDepth(e.target.value)} placeholder={String(fullDefaults?.crawl_depth??'')}/></label>
               <label>Crawl minutes<input type="number" min="1" value={crawlMinutes} onChange={e=>setCrawlMinutes(e.target.value)} placeholder={String(fullDefaults?.crawl_duration_minutes??'')}/></label>
               <label>Template requests/sec<input type="number" min="1" value={templateRate} onChange={e=>setTemplateRate(e.target.value)} placeholder={String(fullDefaults?.template_rate??'')}/></label>
