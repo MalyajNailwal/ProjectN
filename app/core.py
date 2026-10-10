@@ -731,8 +731,6 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
                     limitations.append(gap("journey_capability_not_assessed", capability["message"], "Add a scoped journey with controlled accounts and mark its covers field after verifying its assertions.", "journeys"))
         if request.get("profile") in {"deep", "full"} and "templates" in completed_stages:
             for policy in COVERAGE["deep_profile_limits"]:
-                if request.get("profile") == "full" and policy["code"] == "intrusive_templates_excluded":
-                    continue
                 limitations.append(gap(policy["code"], policy["message"], policy["resolution"], "templates"))
         step_states = {step["id"]: step["state"] for step in steps}
         stage_states = {stage["id"]: stage["state"] for stage in stages}

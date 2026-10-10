@@ -239,6 +239,31 @@ def export_scan(scan_id: str):
     return Response(json.dumps(item["result"], indent=2), media_type="application/json", headers={"Content-Disposition": f'attachment; filename="projectn-{scan_id}.json"'})
 
 
+@app.get("/api/scans/{scan_id}/findings/{finding_id}/history")
+def finding_history(scan_id: str, finding_id: str):
+    """When this exact finding (by its stable fingerprint) was first seen on this same target, and in how many scans."""
+    report = scan_detail(scan_id)["result"]
+    if report is None:
+        raise HTTPException(409, "Report is not ready")
+    finding = next((item for item in report["findings"] if item["id"] == finding_id), None)
+    if finding is None:
+        raise HTTPException(404, "Finding not found")
+    target_key = (report["target"].get("url") or report["target"].get("repo_url") or report["target"].get("local_path") or "").lower()
+    with connection() as db:
+        rows = db.execute("SELECT created, target, result FROM scans WHERE status = 'completed' AND result IS NOT NULL ORDER BY created ASC").fetchall()
+    first_seen, seen_in = None, 0
+    for row in rows:
+        other_target = json.loads(row["target"])
+        other_key = (other_target.get("url") or other_target.get("repo_url") or other_target.get("local_path") or "").lower()
+        if other_key != target_key:
+            continue
+        if any(item.get("fingerprint") == finding["fingerprint"] for item in json.loads(row["result"]).get("findings", [])):
+            seen_in += 1
+            if first_seen is None:
+                first_seen = row["created"]
+    return {"first_seen": first_seen, "seen_in_scans": seen_in}
+
+
 @app.post("/api/scans/{scan_id}/findings/{finding_id}/draft")
 def remediation_draft(scan_id: str, finding_id: str, request: DraftRequest):
     from app.assistant import draft_remediation

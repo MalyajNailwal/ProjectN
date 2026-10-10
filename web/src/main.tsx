@@ -107,6 +107,7 @@ function App(){
   const [severity,setSeverity] = useState('all')
   const [comparison,setComparison] = useState<Comparison|null>(null)
   const [draft,setDraft] = useState<RemediationDraft|null>(null)
+  const [findingHistory,setFindingHistory] = useState<{first_seen:number|null;seen_in_scans:number}|null>(null)
   const [draftError,setDraftError] = useState('')
   const [draftBusy,setDraftBusy] = useState(false)
   const [assistantStatus,setAssistantStatus] = useState<AssistantStatus|null>(null)
@@ -137,6 +138,10 @@ function App(){
     else{setSelected(null);go(view,{replace:true})}
   }
 
+  useEffect(()=>{
+    setFindingHistory(null)
+    if(selected&&scan) jsonFetch<{first_seen:number|null;seen_in_scans:number}>(`/api/scans/${scan.id}/findings/${selected.id}/history`).then(setFindingHistory).catch(()=>{})
+  },[selected?.id,scan?.id])
   useEffect(()=>{
     jsonFetch<Scanner[]>('/api/scanners').then(setScanners).catch(e=>setError(e.message))
     jsonFetch<AssistantStatus>('/api/assistant/status').then(setAssistantStatus).catch(()=>{})
@@ -481,8 +486,9 @@ const assetsView=<>
           <Fact icon={Wrench} label="How to fix">{selected.remediation}</Fact>
           <Fact icon={BadgeCheck} label="Verify the fix">{selected.verification}</Fact>
           <Fact icon={Hash} label="Rule"><code>{selected.rule||'—'}</code></Fact>
+          {findingHistory&&findingHistory.seen_in_scans>1&&findingHistory.first_seen&&<Fact icon={History} label="First observed">{formatTime(findingHistory.first_seen)} · seen in {findingHistory.seen_in_scans} scans on this target</Fact>}
         </dl>
-        {['surface','tls','tls_config','dependencies','performance','journeys'].includes(selected.scanner)&&<section className="ai-draft">
+        {['surface','tls','tls_config','dependencies','performance','journeys','templates','application','accessibility','infra','slopsquat'].includes(selected.scanner)&&<section className="ai-draft">
           <h3><Sparkles size={15} aria-hidden="true"/>Optional AI draft</h3>
           {assistantStatus?.external&&<label className="consent"><input type="checkbox" checked={allowExternal} onChange={e=>setAllowExternal(e.target.checked)}/><span>Send this selected finding to OpenRouter for an AI draft.</span></label>}
           <button type="button" className="btn secondary" disabled={draftBusy||!assistantStatus?.configured||(!!assistantStatus?.external&&!allowExternal)} onClick={()=>requestDraft(selected)}>{draftBusy?<><LoaderCircle size={14} className="spin" aria-hidden="true"/>Working…</>:<><Sparkles size={14} aria-hidden="true"/>Draft with {assistantStatus?.provider||'configured provider'}</>}</button>

@@ -20,7 +20,11 @@ def run(url: str, output: Path, source: Path, settings: dict) -> None:
     node = shutil.which("node")
     if not node or not Path(chrome).is_file():
         raise RuntimeError("Node.js or local Chromium is unavailable")
-    command = [node, str(source / "cli/index.js"), url, "--output=json", f"--output-path={output}", "--quiet", "--chrome-flags=--headless=new", "--only-categories=" + ",".join(settings["categories"])]
+    # Lighthouse's default user agent announces itself ("...Chrome-Lighthouse"), which some hosts
+    # (observed on Vercel) block outright with 403 while a normal browser request passes. This
+    # flag keeps Chrome's own real user agent instead, matching what the browser-driven stages
+    # (crawler/accessibility/application) already send.
+    command = [node, str(source / "cli/index.js"), url, "--output=json", f"--output-path={output}", "--quiet", "--chrome-flags=--headless=new", "--no-emulated-user-agent", "--only-categories=" + ",".join(settings["categories"])]
     environment = {**os.environ, "CHROME_PATH": chrome}
     completed = subprocess.run(command, cwd=source, capture_output=True, text=True, timeout=600, shell=False, env=environment)
     if completed.returncode != 0 or not output.is_file():
