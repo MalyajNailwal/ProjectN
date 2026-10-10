@@ -489,8 +489,15 @@ def scan_one(spec: dict, values: dict, work: Path, cancel=None) -> tuple[list[di
             issues.append(oob_issue)
         elif spec["id"] == "templates" and full and values.get("oob_server") and not details.get("oob_interactions"):
             issues.append(gap("oob_target_reachability_unverified", "The callback server responded locally, but target-to-callback reachability was not independently verified.", "Confirm an interaction with a controlled OOB test before treating absent OOB findings as coverage.", "templates"))
-        if spec["id"] == "static" and acceptable and details.get("files_scanned") == 0:
-            issues.append(gap("no_files_analyzed", "Source analysis did not analyze any files.", "Check that the folder contains source files in supported languages that are not excluded by .gitignore or .semgrepignore, then rescan.", spec["id"]))
+        if spec["id"] == "dependencies":
+            # OSV-Scanner omits clean packages from its JSON, so the checked lockfiles come from its scan log.
+            scanned = re.findall(r"Scanned (.+?) file and found (\d+) package", (result.stdout or "") + (result.stderr or ""))
+            details["lockfiles"] = [{"path": path.replace(values.get("repo", "") + os.sep, ""), "packages": int(count)} for path, count in scanned]
+            details["files_scanned"] = len(scanned)
+            details["packages"] = sum(int(count) for _, count in scanned)
+        if acceptable and details.get("files_scanned") == 0 and spec["id"] in {"static", "dependencies"}:
+            message, action = ("Source analysis did not analyze any files.", "Check that the folder contains source files in supported languages that are not excluded by .gitignore or .semgrepignore, then rescan.") if spec["id"] == "static" else ("No supported dependency lockfile was found, so dependency vulnerabilities were not assessed.", "Commit a lockfile such as package-lock.json, poetry.lock, go.sum, Cargo.lock, or a pinned requirements.txt, then rescan.")
+            issues.append(gap("no_files_analyzed", message, action, spec["id"]))
         if details.get("errors"):
             error_count = len(details["errors"]) if isinstance(details["errors"], list) else details["errors"]
             issues.append(gap("scanner_partial", f"{error_count} target or parser errors were reported.", "Review the stage details and target access, then rerun the scan.", spec["id"]))
@@ -503,8 +510,8 @@ def scan_one(spec: dict, values: dict, work: Path, cancel=None) -> tuple[list[di
         if details.get("inventory_truncated"):
             issues.append(gap("inventory_truncated", "The discovered endpoint inventory exceeded the report display limit.", "Increase the Full scan inventory limit and rescan.", spec["id"]))
         if issues and state == "completed":
-            state = "partial"
-        summary = f"{details.get('state_counts', {}).get('open', 0)} open of {details.get('scanned_count', 0)} scanned" if spec["id"] == "ports" else f"{details.get('observed', 0)} observed"
+            state = "skipped" if details.get("files_scanned") == 0 else "partial"
+        summary = f"{details.get('state_counts', {}).get('open', 0)} open of {details.get('scanned_count', 0)} scanned" if spec["id"] == "ports" else f"{details.get('observed', 0)} observed" + (f" in {details['files_scanned']} files" if "files_scanned" in details else "") + (f" ({details['packages']} packages)" if spec["id"] == "dependencies" else "")
         return findings, {"id": spec["id"], "label": spec["label"], "state": state, "summary": summary, "details": details, "exit_code": result.returncode, "source_revision": ready["source_revision"], "source_version": ready["source_version"], "runtime_version": ready["runtime_version"], "runtime_origin": ready["runtime_origin"], "rules_revision": ready["rules_revision"], "rules_dirty": ready["rules_dirty"], "profile": values.get("profile", "standard")}, issues
     except subprocess.TimeoutExpired:
         return [], {"id": spec["id"], "label": spec["label"], "state": "failed", "summary": "Time limit reached"}, [gap("timeout", f"{spec['label']} reached its {timeout} second limit.", "Narrow the scope or increase the scanner timeout in configuration, then retry.", spec["id"])]
@@ -676,7 +683,8 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
             if enabled:
                 for capability in COVERAGE[category]:
                     stage_id = capability["stage"]
-                    if stage_id in completed_stages:
+                    # A stage that ran already reported its own limitation with a specific cause and next step.
+                    if stage_id in completed_stages or (stage_id in stage_states and any(item["scanner"] == stage_id for item in limitations)):
                         continue
                     spec = configured.get(stage_id, {})
                     if step_states.get(stage_id) == "not_run":

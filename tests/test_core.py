@@ -48,6 +48,20 @@ class TargetValidationTests(unittest.TestCase):
         self.assertEqual(stage["state"], "failed")
         self.assertIn("scanner_error", {item["code"] for item in gaps})
 
+    def test_dependency_scan_reports_checked_lockfiles_or_their_absence(self):
+        spec = {"id": "dependencies", "label": "Dependency vulnerabilities", "source": "tools/code/dependency-risk/source", "args": ["{output}"], "output": "osv", "timeout": 5}
+        ready = {"ready": True, "executable": "fixture-scanner", "source_revision": "rev", "source_version": None, "runtime_version": None, "runtime_origin": "fixture", "rules_revision": None, "rules_dirty": False, "runtime": None}
+        for log, state, codes in (("Scanned /repo/web/package-lock.json file and found 120 packages\n", "completed", set()), ("No package sources found\n", "skipped", {"no_files_analyzed"})):
+            def osv(argv, *_args, **_options):
+                Path(argv[1]).write_text(json.dumps({"results": []}))
+                return SimpleNamespace(returncode=0, stdout="", stderr=log)
+
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as temp, patch("app.core.readiness", return_value=ready), patch("app.core.run_tool", side_effect=osv):
+                _, stage, gaps = scan_one(spec, {"profile": "standard", "repo": "/repo"}, Path(temp))
+            self.assertEqual(stage["state"], state)
+            self.assertEqual({item["code"] for item in gaps}, codes)
+        self.assertEqual(stage["details"]["lockfiles"], [])
+
     def test_throttling_and_blocking_responses_become_limitations(self):
         stages = [{"id": "surface", "details": {"status": 403}}, {"id": "crawler", "details": {"status_counts": {"200": 4, "429": 3}}}, {"id": "browser", "details": {"pages": [{"url": "https://example.test/a", "status": 429}]}}]
         gaps = {item["code"]: item for item in response_signal_gaps(stages)}
