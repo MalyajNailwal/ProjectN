@@ -106,6 +106,8 @@ def main() -> int:
         options.require_stage += [spec["id"] for spec in json.loads((ROOT / "config/scanners.json").read_text(encoding="utf-8"))["scanners"]]
         options.timeout = max(options.timeout, 3000)
         os.environ.setdefault("PROJECTN_FIXTURE_USER", "fixture-user")
+    if options.ui:
+        options.timeout = max(options.timeout, 300)  # a browser-driven scan on a busy machine can take several minutes
     ui = browser_python() if options.ui else None
     fields = {}
     for item in options.field:

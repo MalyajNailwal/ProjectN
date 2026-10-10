@@ -38,3 +38,8 @@
 .step.not_run,.step.skipped{opacity:.75}
 .stage-diagnostic{margin-top:6px;font-size:11px;color:#5d6f5a}
 .stage-diagnostic pre{margin:6px 0 0;padding:8px 10px;background:#f4f6f1;border-radius:5px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;font-size:11px}
+a.nav-item,.breadcrumb a{text-decoration:none}
+.breadcrumb a{color:inherit}
+.breadcrumb a:hover{color:#2f4a38}
+.breadcrumb [aria-current]{color:#2f4a38}
+:focus-visible{outline:2px solid #8fb34a;outline-offset:2px}

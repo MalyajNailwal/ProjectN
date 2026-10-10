@@ -35,8 +35,26 @@ def main(base: str, target: str, screenshot: str, timeout_seconds: float) -> int
         if percent != "100%":
             raise RuntimeError(f"Completed scan shows {percent} instead of 100%")
         page.get_by_role("button", name="Explore report").click()
-        page.get_by_role("button", name="Coverage", exact=True).click()
+        page.wait_for_url("**/findings")
+        # Each page and open finding has a URL, and browser Back and Forward stay inside the dashboard.
+        finding = page.locator(".finding-row").first
+        if finding.count():
+            finding.click()
+            page.wait_for_url("**/findings?finding=*")
+            page.locator(".finding-drawer").wait_for()
+            page.go_back()
+            page.wait_for_url("**/findings")
+            page.locator(".finding-drawer").wait_for(state="detached")
+        page.get_by_role("link", name="Coverage", exact=True).click()
+        page.wait_for_url("**/coverage")
         page.get_by_role("heading", name="Scanner stages").wait_for()
+        page.go_back()
+        page.wait_for_url("**/findings")
+        page.locator(".finding-toolbar").wait_for()
+        page.go_forward()
+        page.wait_for_url("**/coverage")
+        page.get_by_role("heading", name="Scanner stages").wait_for()
+        print("UI: pages and findings have their own URLs; browser Back and Forward stay inside the dashboard", flush=True)
         page.screenshot(path=screenshot, full_page=True)
         browser.close()
     if errors:
