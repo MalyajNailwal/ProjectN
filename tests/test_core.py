@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.core import compare_reports, execute_scan, full_scan_options, parse_output, port_in_ranges, scan_one, validate_oob_server, validate_repo_url, validate_target_url
+from app.core import compare_reports, execute_scan, full_scan_options, parse_output, port_in_ranges, response_signal_gaps, scan_one, validate_oob_server, validate_repo_url, validate_target_url
 
 
 class TargetValidationTests(unittest.TestCase):
@@ -47,6 +47,14 @@ class TargetValidationTests(unittest.TestCase):
             _, stage, gaps = scan_one(spec, {"profile": "standard"}, Path(temp))
         self.assertEqual(stage["state"], "failed")
         self.assertIn("scanner_error", {item["code"] for item in gaps})
+
+    def test_throttling_and_blocking_responses_become_limitations(self):
+        stages = [{"id": "surface", "details": {"status": 403}}, {"id": "crawler", "details": {"status_counts": {"200": 4, "429": 3}}}, {"id": "browser", "details": {"pages": [{"url": "https://example.test/a", "status": 429}]}}]
+        gaps = {item["code"]: item for item in response_signal_gaps(stages)}
+        self.assertEqual(set(gaps), {"access_denied", "rate_limited"})
+        self.assertIn("4 request", gaps["rate_limited"]["message"])
+        self.assertEqual(gaps["rate_limited"]["scanner"], "browser, crawler")
+        self.assertEqual(response_signal_gaps([{"id": "crawler", "details": {"status_counts": {"200": 9}}}]), [])
 
     def test_full_website_scan_requires_explicit_authorization(self):
         with self.assertRaisesRegex(ValueError, "explicit authorization"):

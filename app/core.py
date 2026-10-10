@@ -13,6 +13,7 @@ import time
 import tomllib
 import uuid
 import xml.etree.ElementTree as ET
+from collections import Counter
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -313,7 +314,7 @@ def parse_output(spec: dict, output: Path) -> tuple[list[dict], dict]:
             entries = sorted(inventory.values(), key=lambda item: (item["url"], item["method"]))
             api_entries = [item for item in entries if item["content_type"] == "application/json" or item["content_type"].endswith("+json")]
             limit = spec.get("inventory_limit", 500)
-            return [], {"observed": len(entries), "urls": sorted({item["url"] for item in entries})[:limit], "api_endpoints": api_entries[:limit], "api_observed": len(api_entries), "inventory_truncated": len(entries) > limit or len(api_entries) > limit}
+            return [], {"observed": len(entries), "status_counts": dict(Counter(str(item["status"]) for item in entries if item["status"])), "urls": sorted({item["url"] for item in entries})[:limit], "api_endpoints": api_entries[:limit], "api_observed": len(api_entries), "inventory_truncated": len(entries) > limit or len(api_entries) > limit}
         found = []
         for row in rows:
             info = row.get("info", {})
@@ -511,6 +512,24 @@ def scan_one(spec: dict, values: dict, work: Path, cancel=None) -> tuple[list[di
         return [], {"id": spec["id"], "label": spec["label"], "state": "failed", "summary": "Output could not be processed"}, [gap("invalid_output", f"{spec['label']}: {type(exc).__name__}", "Check scanner version and output format, then retry.", spec["id"])]
 
 
+def response_signal_gaps(stages: list[dict]) -> list[dict]:
+    """Report throttling and blocking from HTTP statuses the stages actually observed."""
+    observed: dict[str, Counter] = {}
+    for stage in stages:
+        details = stage.get("details") or {}
+        counts = Counter(details.get("status_counts", {}))
+        counts.update(str(page["status"]) for page in details.get("pages", []) if isinstance(page, dict) and page.get("status"))
+        if stage["id"] == "surface" and details.get("status"):
+            counts[str(details["status"])] += 1
+        for status, count in counts.items():
+            observed.setdefault(status, Counter())[stage["id"]] += count
+    issues = []
+    for status, signal in COVERAGE["response_signals"].items():
+        if by_stage := observed.get(status):
+            issues.append(gap(signal["code"], signal["message"].format(count=sum(by_stage.values())), signal["resolution"], ", ".join(sorted(by_stage))))
+    return issues
+
+
 def execute_scan(request: dict, progress, cancel=None) -> dict:
     from app.web_probe import inspect_website
     from app.tls_probe import inspect_tls
@@ -636,6 +655,7 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
         for step in steps:
             if step["state"] == "pending":
                 step["state"] = "not_run" if cancelled else "skipped"
+        limitations.extend(response_signal_gaps(stages))
         completed_stages = {stage["id"] for stage in stages if stage["state"] == "completed"}
         if "journeys" in completed_stages:
             journey_stage = next(stage for stage in stages if stage["id"] == "journeys")

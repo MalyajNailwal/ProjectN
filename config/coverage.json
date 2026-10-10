@@ -17,6 +17,11 @@
     "full_profile": "This check runs only in Full scope. Choose Full scope for a target you are authorized to test, then rescan.",
     "unfinished": "This step ran but did not complete. Review its stage details and the related limitations, then rescan."
   },
+  "response_signals": {
+    "429": {"code": "rate_limited", "message": "The target answered {count} request(s) with HTTP 429 Too Many Requests; checks after throttling may be incomplete.", "resolution": "Lower the template request rate or crawl scope in Full scan settings, or ask the site owner to allowlist this machine, then rescan."},
+    "403": {"code": "access_denied", "message": "The target answered {count} request(s) with HTTP 403 Forbidden; those responses were not assessed as normal pages.", "resolution": "If a firewall or bot protection blocks this machine, ask the site owner to allowlist it; for protected areas, add an authenticated journey, then rescan."},
+    "503": {"code": "service_unavailable", "message": "The target answered {count} request(s) with HTTP 503 Service Unavailable, which can mean overload or bot protection.", "resolution": "Rescan when the site is stable or with lower request rates, and ask the site owner whether protection is blocking this machine."}
+  },
   "deep_profile_limits": [
     {"code": "oob_checks_disabled", "message": "Out-of-band template checks were excluded from this local profile.", "resolution": "Configure a reachable callback service and an explicit OOB-enabled profile before rerunning those checks."},
     {"code": "intrusive_templates_excluded", "message": "Templates tagged dos, fuzz, or bruteforce were excluded.", "resolution": "Review those template families and select a separate authorized test profile if they are required."}
