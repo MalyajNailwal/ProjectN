@@ -32,7 +32,7 @@ class WebsiteProbeTests(unittest.TestCase):
         thread.start()
         try:
             url = f"http://127.0.0.1:{server.server_port}/"
-            findings, stage, gaps = inspect_website(url, "127.0.0.1")
+            findings, stage, gaps, _ = inspect_website(url, "127.0.0.1")
         finally:
             server.shutdown()
             server.server_close()
@@ -49,7 +49,7 @@ class WebsiteProbeTests(unittest.TestCase):
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
-            findings, stage, _ = inspect_website(f"http://127.0.0.1:{server.server_port}/json", "127.0.0.1")
+            findings, stage, _, _ = inspect_website(f"http://127.0.0.1:{server.server_port}/json", "127.0.0.1")
         finally:
             server.shutdown()
             server.server_close()

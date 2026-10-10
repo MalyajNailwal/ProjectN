@@ -576,6 +576,7 @@ def response_signal_gaps(stages: list[dict]) -> list[dict]:
 
 
 def execute_scan(request: dict, progress, cancel=None) -> dict:
+    from app.infra_probe import inspect_infrastructure
     from app.web_probe import inspect_website
     from app.tls_probe import inspect_tls
     from app.tls_config_probe import inspect_tls_config
@@ -614,6 +615,7 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
         steps += [{"id": "surface", "label": "HTTP surface"}, {"id": "tls", "label": "TLS certificate and connection"}]
         if profile == "full":
             steps.append({"id": "tls_config", "label": "TLS protocol and cipher configuration"})
+        steps.append({"id": "infra", "label": "Infrastructure and stack"})
     steps += [{"id": spec["id"], "label": spec["label"]} for spec in selected]
     if api_spec_file:
         steps.append({"id": "api_spec", "label": "OpenAPI contract comparison"})
@@ -667,8 +669,9 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
             values = {"url": url or "", "host": host or "", "repo": str(repo) if repo else "", "journey_file": str(journey_file) if journey_file else "", "oob_server": oob_server or "", "oob_token_env": oob_token_env or "", "profile": profile, "port_range": full_options["port_range"], "port_flag": full_options.get("port_flag", "--top-ports"), "port_value": full_options.get("port_value", "1000"), "crawl_depth": str(full_options["crawl_depth"]), "crawl_duration": f"{full_options['crawl_duration_minutes']}m", "template_rate": str(full_options["template_rate"]), "inventory_limit": full_options["inventory_limit"], "browser_page_limit": str(full_options["browser_page_limit"])}
             if url:
                 begin("surface", "Inspecting HTTP surface")
-                found, stage, issues = inspect_website(url, host)
+                found, stage, issues, surface_body = inspect_website(url, host)
                 stage.update(source_revision=builtin_revision("app/web_probe.py", "config/web_probe.json"), rules_dirty=False)
+                surface_headers = stage.get("details", {}).get("headers", {})
                 record(found, stage, issues)
                 begin("tls", "Inspecting TLS connection")
                 found, stage, issues = inspect_tls(url, host)
@@ -677,6 +680,10 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
                 if profile == "full":
                     begin("tls_config", "Enumerating TLS protocols and cipher suites")
                     record(*inspect_tls_config(url, host, cancel))
+                begin("infra", "Profiling hosting, backend, and frontend signals")
+                found, stage, issues = inspect_infrastructure(surface_headers, surface_body)
+                stage.update(source_revision=builtin_revision("app/infra_probe.py", "config/infra_signals.json"), rules_dirty=False)
+                record(found, stage, issues)
             runnable = [spec for spec in selected if spec["kind"] != "code" or repo]
             for spec in runnable:
                 begin(spec["id"], f"Running {spec['label']}")

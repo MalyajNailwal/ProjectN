@@ -10,6 +10,11 @@ from pathlib import Path
 
 CONFIG = json.loads((Path(__file__).resolve().parent.parent / "config" / "web_probe.json").read_text(encoding="utf-8"))
 
+# Public response metadata only (never Set-Cookie or anything with a credential in it); used to fingerprint hosting/CDN providers.
+INFRA_HEADERS = ("server", "via", "x-powered-by", "cf-ray", "cf-cache-status", "x-vercel-id", "x-vercel-cache", "x-nf-request-id",
+    "x-amz-cf-id", "x-amz-cf-pop", "x-azure-ref", "x-served-by", "x-cache", "x-github-request-id", "x-fastly-request-id",
+    "fly-request-id", "x-render-origin-server", "x-railway-request-id")
+
 
 class SurfaceParser(HTMLParser):
     def __init__(self, base_url: str, host: str):
@@ -46,8 +51,12 @@ class ScopedRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def inspect_website(url: str, host: str) -> tuple[list[dict], dict, list[dict]]:
-    """Inspect one scoped HTTP response; each check reports observed evidence only."""
+def inspect_website(url: str, host: str) -> tuple[list[dict], dict, list[dict], str]:
+    """Inspect one scoped HTTP response; each check reports observed evidence only.
+
+    The fourth return value is the decoded HTML body for the caller's own in-memory use (such as
+    infrastructure fingerprinting); it is not part of the stage details and is never stored in the report.
+    """
     from app.core import finding, gap
 
     redirect = ScopedRedirect(host)
@@ -66,10 +75,11 @@ def inspect_website(url: str, host: str) -> tuple[list[dict], dict, list[dict]]:
     except (OSError, ValueError, urllib.error.URLError) as exc:
         reason = "Redirect left the selected host." if redirect.blocked else f"HTTP request failed: {type(exc).__name__}."
         action = "Add the redirected host to the authorized scope and rescan it separately." if redirect.blocked else "Check DNS, TLS, connectivity, and the target URL, then retry."
-        return [], {"id": "surface", "label": "HTTP surface", "state": "failed", "summary": reason}, [gap("http_unavailable", reason, action, "surface")]
+        return [], {"id": "surface", "label": "HTTP surface", "state": "failed", "summary": reason}, [gap("http_unavailable", reason, action, "surface")], ""
 
     display_url = urllib.parse.urlparse(final_url)._replace(query="", fragment="").geturl()
-    details: dict = {"observed": 1, "url": display_url, "status": status, "content_type": headers.get_content_type(), "links": [], "forms": [], "response_bytes_read": len(body)}
+    details: dict = {"observed": 1, "url": display_url, "status": status, "content_type": headers.get_content_type(), "links": [], "forms": [], "response_bytes_read": len(body),
+        "headers": {name: headers.get(name) for name in INFRA_HEADERS if headers.get(name)}}
     issues = []
     if redirect.blocked:
         issues.append(gap("out_of_scope_redirect", "The target redirected to another host.", "Add that host to the authorized scope and scan it separately.", "surface"))
@@ -79,6 +89,7 @@ def inspect_website(url: str, host: str) -> tuple[list[dict], dict, list[dict]]:
     if status >= 400:
         issues.append(gap("http_error", f"The target returned HTTP {status}.", "Check target access and scan an available entry page, then retry.", "surface"))
 
+    html = ""
     if details["content_type"] == "text/html":
         charset = headers.get_content_charset() or "utf-8"
         parser = SurfaceParser(final_url, host)
@@ -110,4 +121,4 @@ def inspect_website(url: str, host: str) -> tuple[list[dict], dict, list[dict]]:
                 if applicable and attr not in attributes:
                     found.append(finding("surface", f"Cookie {name} lacks {attr} attribute", "low", display_url, f"Observed Set-Cookie for {name} without {attr}; cookie value withheld.", f"Set the {attr} attribute on {name} if compatible with the intended cookie behavior, then rescan.", f"cookie:{attr}", "observed"))
     state = "partial" if redirect.blocked or status >= 400 else "completed"
-    return found, {"id": "surface", "label": "HTTP surface", "state": state, "summary": f"HTTP {status}; {len(details['links'])} links; {len(details['forms'])} forms", "details": details}, issues
+    return found, {"id": "surface", "label": "HTTP surface", "state": state, "summary": f"HTTP {status}; {len(details['links'])} links; {len(details['forms'])} forms", "details": details}, issues, html

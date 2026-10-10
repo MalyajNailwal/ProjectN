@@ -1,0 +1,137 @@
+{
+  "match_label": {
+    "strong": "confirmed",
+    "weak": "possible"
+  },
+  "strong_threshold_percent": 60,
+  "hosting": [
+    {"id": "cloudflare", "label": "Cloudflare", "signals": [
+      {"type": "header", "name": "server", "pattern": "cloudflare", "weight": 3, "evidence": "Server header"},
+      {"type": "header", "name": "cf-ray", "pattern": ".+", "weight": 3, "evidence": "CF-RAY header"},
+      {"type": "header", "name": "cf-cache-status", "pattern": ".+", "weight": 2, "evidence": "CF-Cache-Status header"}
+    ]},
+    {"id": "aws-cloudfront", "label": "AWS CloudFront", "signals": [
+      {"type": "header", "name": "via", "pattern": "cloudfront", "weight": 3, "evidence": "Via header names CloudFront"},
+      {"type": "header", "name": "x-amz-cf-id", "pattern": ".+", "weight": 3, "evidence": "X-Amz-Cf-Id header"},
+      {"type": "header", "name": "x-amz-cf-pop", "pattern": ".+", "weight": 2, "evidence": "X-Amz-Cf-Pop header"}
+    ]},
+    {"id": "aws-s3", "label": "AWS S3", "signals": [
+      {"type": "body", "pattern": "[a-z0-9.-]+\\.s3[.-][a-z0-9-]*amazonaws\\.com", "weight": 3, "evidence": "S3 bucket URL referenced on the page"},
+      {"type": "header", "name": "server", "pattern": "amazons3", "weight": 3, "evidence": "Server header"}
+    ]},
+    {"id": "aws-elb", "label": "AWS Elastic Load Balancer", "signals": [
+      {"type": "header", "name": "server", "pattern": "awselb", "weight": 3, "evidence": "Server header"}
+    ]},
+    {"id": "vercel", "label": "Vercel", "signals": [
+      {"type": "header", "name": "server", "pattern": "^vercel$", "weight": 3, "evidence": "Server header"},
+      {"type": "header", "name": "x-vercel-id", "pattern": ".+", "weight": 3, "evidence": "X-Vercel-Id header"},
+      {"type": "header", "name": "x-vercel-cache", "pattern": ".+", "weight": 2, "evidence": "X-Vercel-Cache header"},
+      {"type": "body", "pattern": "\\.vercel\\.app", "weight": 1, "evidence": "vercel.app referenced on the page"}
+    ]},
+    {"id": "netlify", "label": "Netlify", "signals": [
+      {"type": "header", "name": "server", "pattern": "netlify", "weight": 3, "evidence": "Server header"},
+      {"type": "header", "name": "x-nf-request-id", "pattern": ".+", "weight": 3, "evidence": "X-NF-Request-Id header"},
+      {"type": "body", "pattern": "\\.netlify\\.app", "weight": 1, "evidence": "netlify.app referenced on the page"}
+    ]},
+    {"id": "github-pages", "label": "GitHub Pages", "signals": [
+      {"type": "header", "name": "server", "pattern": "github\\.com|githubassets", "weight": 3, "evidence": "Server header"},
+      {"type": "header", "name": "x-github-request-id", "pattern": ".+", "weight": 2, "evidence": "X-GitHub-Request-Id header"},
+      {"type": "body", "pattern": "\\.github\\.io", "weight": 1, "evidence": "github.io referenced on the page"}
+    ]},
+    {"id": "azure", "label": "Microsoft Azure", "signals": [
+      {"type": "header", "name": "x-azure-ref", "pattern": ".+", "weight": 3, "evidence": "X-Azure-Ref header"},
+      {"type": "header", "name": "server", "pattern": "windows-azure|microsoft-iis", "weight": 2, "evidence": "Server header"},
+      {"type": "body", "pattern": "\\.azurewebsites\\.net|\\.azureedge\\.net", "weight": 1, "evidence": "Azure domain referenced on the page"}
+    ]},
+    {"id": "google-cloud", "label": "Google Cloud / Firebase Hosting", "signals": [
+      {"type": "header", "name": "server", "pattern": "^gse$|google frontend", "weight": 3, "evidence": "Server header"},
+      {"type": "body", "pattern": "\\.firebaseapp\\.com|\\.web\\.app", "weight": 2, "evidence": "Firebase Hosting domain referenced on the page"}
+    ]},
+    {"id": "fastly", "label": "Fastly", "signals": [
+      {"type": "header", "name": "x-served-by", "pattern": "cache-", "weight": 3, "evidence": "X-Served-By header"},
+      {"type": "header", "name": "x-fastly-request-id", "pattern": ".+", "weight": 3, "evidence": "X-Fastly-Request-Id header"},
+      {"type": "header", "name": "via", "pattern": "fastly", "weight": 2, "evidence": "Via header"}
+    ]},
+    {"id": "akamai", "label": "Akamai", "signals": [
+      {"type": "header", "name": "server", "pattern": "akamaighost", "weight": 3, "evidence": "Server header"},
+      {"type": "header", "name": "x-akamai-transformed", "pattern": ".+", "weight": 2, "evidence": "X-Akamai-Transformed header"}
+    ]},
+    {"id": "heroku", "label": "Heroku", "signals": [
+      {"type": "header", "name": "via", "pattern": "vegur", "weight": 3, "evidence": "Via header (Heroku's router)"},
+      {"type": "body", "pattern": "\\.herokuapp\\.com", "weight": 2, "evidence": "herokuapp.com referenced on the page"}
+    ]},
+    {"id": "railway", "label": "Railway", "signals": [
+      {"type": "header", "name": "x-railway-request-id", "pattern": ".+", "weight": 3, "evidence": "X-Railway-Request-Id header"},
+      {"type": "body", "pattern": "\\.railway\\.app", "weight": 2, "evidence": "railway.app referenced on the page"}
+    ]},
+    {"id": "render", "label": "Render", "signals": [
+      {"type": "header", "name": "x-render-origin-server", "pattern": ".+", "weight": 3, "evidence": "X-Render-Origin-Server header"},
+      {"type": "body", "pattern": "\\.onrender\\.com", "weight": 2, "evidence": "onrender.com referenced on the page"}
+    ]},
+    {"id": "fly-io", "label": "Fly.io", "signals": [
+      {"type": "header", "name": "fly-request-id", "pattern": ".+", "weight": 3, "evidence": "Fly-Request-Id header"},
+      {"type": "body", "pattern": "\\.fly\\.dev", "weight": 2, "evidence": "fly.dev referenced on the page"}
+    ]},
+    {"id": "digitalocean", "label": "DigitalOcean App Platform", "signals": [
+      {"type": "body", "pattern": "\\.ondigitalocean\\.app", "weight": 3, "evidence": "ondigitalocean.app referenced on the page"}
+    ]}
+  ],
+  "baas": [
+    {"id": "supabase", "label": "Supabase", "signals": [
+      {"type": "body", "pattern": "[a-z0-9]{20}\\.supabase\\.co", "weight": 3, "evidence": "Supabase project URL on the page"},
+      {"type": "body", "pattern": "supabase-js|@supabase/supabase-js", "weight": 2, "evidence": "Supabase client library referenced"}
+    ]},
+    {"id": "firebase", "label": "Firebase", "signals": [
+      {"type": "body", "pattern": "\\.firebaseio\\.com|firebasestorage\\.googleapis\\.com", "weight": 3, "evidence": "Firebase project domain on the page"},
+      {"type": "body", "pattern": "firebase(?:app)?\\.initializeApp|firebase-app-compat", "weight": 2, "evidence": "Firebase SDK initialization referenced"}
+    ]},
+    {"id": "clerk", "label": "Clerk (auth)", "signals": [
+      {"type": "body", "pattern": "clerk\\.(?:accounts\\.dev|dev)|@clerk/clerk-js", "weight": 2, "evidence": "Clerk auth script referenced"}
+    ]},
+    {"id": "auth0", "label": "Auth0", "signals": [
+      {"type": "body", "pattern": "\\.auth0\\.com|auth0-spa-js", "weight": 2, "evidence": "Auth0 domain or SDK referenced"}
+    ]},
+    {"id": "stripe", "label": "Stripe", "signals": [
+      {"type": "body", "pattern": "js\\.stripe\\.com", "weight": 2, "evidence": "Stripe.js referenced"}
+    ]},
+    {"id": "planetscale", "label": "PlanetScale", "signals": [
+      {"type": "body", "pattern": "\\.psdb\\.cloud", "weight": 2, "evidence": "PlanetScale database host referenced"}
+    ]},
+    {"id": "mongodb-atlas", "label": "MongoDB Atlas", "signals": [
+      {"type": "body", "pattern": "\\.mongodb\\.net", "weight": 2, "evidence": "MongoDB Atlas host referenced"}
+    ]}
+  ],
+  "frameworks": [
+    {"id": "nextjs", "label": "Next.js", "signals": [
+      {"type": "body", "pattern": "__NEXT_DATA__", "weight": 3, "evidence": "__NEXT_DATA__ script present"},
+      {"type": "body", "pattern": "/_next/static/", "weight": 2, "evidence": "/_next/static/ asset path referenced"}
+    ]},
+    {"id": "nuxt", "label": "Nuxt", "signals": [
+      {"type": "body", "pattern": "__NUXT__|/_nuxt/", "weight": 3, "evidence": "__NUXT__ data or /_nuxt/ asset path present"}
+    ]},
+    {"id": "gatsby", "label": "Gatsby", "signals": [
+      {"type": "body", "pattern": "___gatsby|/page-data/", "weight": 3, "evidence": "Gatsby runtime markers present"}
+    ]},
+    {"id": "sveltekit", "label": "SvelteKit", "signals": [
+      {"type": "body", "pattern": "__sveltekit|/_app/immutable/", "weight": 3, "evidence": "SvelteKit runtime markers present"}
+    ]},
+    {"id": "angular", "label": "Angular", "signals": [
+      {"type": "body", "pattern": "ng-version=", "weight": 3, "evidence": "ng-version attribute present"}
+    ]},
+    {"id": "vue", "label": "Vue", "signals": [
+      {"type": "body", "pattern": "data-v-[0-9a-f]{6,}", "weight": 2, "evidence": "Vue scoped-style data attribute present"}
+    ]},
+    {"id": "react", "label": "React", "signals": [
+      {"type": "body", "pattern": "data-reactroot|react-dom(?:\\.production)?(?:\\.min)?\\.js", "weight": 2, "evidence": "React runtime markers present"}
+    ]},
+    {"id": "wordpress", "label": "WordPress", "signals": [
+      {"type": "body", "pattern": "wp-content/|wp-includes/|wp-json", "weight": 3, "evidence": "WordPress asset or REST API path present"}
+    ]},
+    {"id": "shopify", "label": "Shopify", "signals": [
+      {"type": "body", "pattern": "cdn\\.shopify\\.com|Shopify\\.theme", "weight": 3, "evidence": "Shopify asset host or theme object present"}
+    ]},
+    {"id": "webflow", "label": "Webflow", "signals": [
+      {"type": "body", "pattern": "webflow\\.js|data-wf-site", "weight": 3, "evidence": "Webflow runtime markers present"}
+    ]}
+  ]
+}

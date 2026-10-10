@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Activity, ArrowRight, BadgeCheck, Boxes, ChevronRight, CircleAlert, CircleStop, Clock3, Cpu, Download, FileCode2, FileSearch, Fingerprint, FolderGit2, FolderOpen, Gauge, GitCompareArrows, Globe, Hash, History, KeyRound, LayoutDashboard, ListChecks, LoaderCircle, LockKeyhole, MapPin, Network, OctagonAlert, Radar, Route, ScrollText, Shield, ShieldAlert, ShieldCheck, Sparkles, Trash2, Wrench, X, Zap } from 'lucide-react'
+import { Activity, ArrowRight, BadgeCheck, Blocks, Boxes, ChevronRight, CircleAlert, CircleStop, Clock3, Cloud, Cpu, Database, Download, FileCode2, FileSearch, Fingerprint, FolderGit2, FolderOpen, Gauge, GitCompareArrows, Globe, Hash, History, KeyRound, LayoutDashboard, ListChecks, LoaderCircle, LockKeyhole, MapPin, Network, OctagonAlert, Radar, Route, ScrollText, Shield, ShieldAlert, ShieldCheck, Sparkles, Trash2, Wrench, X, Zap } from 'lucide-react'
 import { EmptyState, Meter, PageHeader, Panel, SeverityBadge, SeverityIcon, Stat, StateBadge, StateIcon, ThemeToggle, severityMeta, stateMeta } from './ui'
 import './style.css'
 
@@ -220,6 +220,10 @@ function App(){
   const performanceScores=detail<Record<string,{title:string;score:number|null}>>('performance','categories')
   const tlsDetails=report?.stages.find(s=>s.id==='tls')?.details as {protocol?:string;cipher?:string;days_until_expiry?:number}|undefined
   const technologies=detail<string[]>('technology','technologies')
+  type InfraMatch={id:string;label:string;match_percent:number;confidence:string;evidence:string[]}
+  const infraHosting=detail<InfraMatch[]>('infra','hosting')
+  const infraBaas=detail<InfraMatch[]>('infra','baas')
+  const infraFrameworks=detail<InfraMatch[]>('infra','frameworks')
   const navBadge:Partial<Record<View,string|number>>={findings:report?report.findings.length:undefined,coverage:report?.limitations.length||undefined,setup:scanners.length?`${ready}/${scanners.length}`:undefined}
   const exportButton=report&&scan?<a className="btn secondary" href={`/api/scans/${scan.id}/export`}><Download size={15} aria-hidden="true"/>Export JSON</a>:undefined
   const targetOf=(target:{url?:string|null;repo_url?:string|null;local_path?:string|null})=>target.url||target.repo_url||target.local_path||'Target pending'
@@ -386,8 +390,19 @@ function App(){
     </div>
   </>
 
-  const assetsView=<>
+  function InfraGroup({icon:Icon,title,items,empty}:{icon:React.ElementType;title:string;items?:InfraMatch[];empty:string}){
+  return <div className="infra-group"><h3><Icon size={14} aria-hidden="true"/>{title}</h3>{items?.length?<div className="infra-list">{items.map(item=><div className="infra-match" key={item.id}><div className="infra-match-head"><strong>{item.label}</strong><span className={'badge infra-conf '+item.confidence}>{item.match_percent}% match</span></div><small>{item.evidence.join(' · ')}</small></div>)}</div>:<p className="muted">{empty}</p>}</div>
+}
+const assetsView=<>
     <PageHeader title="Assets" description="What this assessment actually observed. Counts cover the scoped scan only, not a complete inventory." actions={exportButton}/>
+    {(infraHosting||infraBaas||infraFrameworks)&&<Panel title="Infrastructure & stack" icon={Cloud} meta="from the fetched homepage">
+      <p className="infra-note">Each percent is the share of known signals matched for that provider (shown below it), not an estimated probability. Homepage only; an unlisted or custom-built stack will not be detected.</p>
+      <div className="infra-columns">
+        <InfraGroup icon={Cloud} title="Hosting & CDN" items={infraHosting} empty="No known hosting or CDN signals matched."/>
+        <InfraGroup icon={Database} title="Backend & auth" items={infraBaas} empty="No known backend-as-a-service signals matched."/>
+        <InfraGroup icon={Blocks} title="Frontend framework" items={infraFrameworks} empty="No known frontend framework signals matched."/>
+      </div>
+    </Panel>}
     <div className="two-col">
       <Panel title="Ports and services" icon={Network} meta={ports?.length?`${ports.length} recorded`:undefined}>
         {ports?.length?<div className="rows scroll">{ports.map((port,index)=><div className="asset-row" key={`${port.host}-${port.port}-${index}`}><code className="port">{port.port}<small>/{port.protocol}</small></code><span className="row-main"><strong>{port.service}{port.version&&` ${port.version}`}</strong><small>{port.host}</small></span><span className={`badge port-${port.state}`}>{port.state}</span></div>)}</div>:<EmptyState icon={Network} title="No port inventory">Check scanner setup and the Coverage page.</EmptyState>}

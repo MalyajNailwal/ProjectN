@@ -354,6 +354,20 @@ p{margin:0}
 .row-wrap:hover .icon-btn.ghost,.icon-btn.ghost:focus-visible{opacity:1}
 .icon-btn.ghost:hover{color:var(--danger);background:color-mix(in srgb,var(--danger) 9%,transparent)}
 
+/* Infrastructure & stack panel */
+.infra-note{margin:0 0 14px;color:var(--text-3);font-size:12px;line-height:1.5}
+.infra-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.infra-group h3{display:flex;align-items:center;gap:6px;margin:0 0 8px;font-size:12px;font-weight:650;color:var(--text-2)}
+.infra-group h3 svg{color:var(--text-3)}
+.infra-list{display:grid;gap:8px}
+.infra-match{padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}
+.infra-match-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.infra-match-head strong{font-size:12.5px;font-weight:600}
+.infra-match small{display:block;margin-top:3px;color:var(--text-3);font-size:11px;line-height:1.4}
+.badge.infra-conf{--c:var(--text-3);color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);border-color:color-mix(in srgb,var(--c) 28%,transparent)}
+.badge.infra-conf.confirmed{--c:var(--ok)}
+.badge.infra-conf.possible{--c:var(--warn)}
+
 /* Responsive */
 @media (max-width:1100px){
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -373,6 +387,7 @@ p{margin:0}
   .row-cta{font-size:0}
   .content{padding:18px 16px 48px}
   .stats,.stats.three{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .infra-columns{grid-template-columns:1fr}
   .field-pair,.profiles,.option-grid{grid-template-columns:1fr}
   .stat strong{font-size:22px}
   .page-header h1{font-size:21px}
