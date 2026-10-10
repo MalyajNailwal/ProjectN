@@ -73,7 +73,7 @@ Every finding should include: scanner and rule IDs, target URL or file, evidence
 
 ## Limits that cannot be removed by orchestration alone
 
-Generic black-box tools cannot know all business rules. Authenticated and role-specific areas need working sessions and representative accounts. A URL-only scan cannot inspect source code or Git history. Semgrep Community Edition does not provide full cross-file analysis. Rule/template coverage changes with installed versions. These facts must be disclosed in each scan's coverage section when applicable.
+Generic black-box tools cannot know all business rules. Authenticated and role-specific areas need working sessions and representative accounts. A URL-only scan cannot inspect source code or Git history. Semgrep Community Edition does not provide full cross-file analysis, and the Apex and Elixir rule packs need Semgrep Pro language support, so ProjectN does not run them. Rule/template coverage changes with installed versions. These facts must be disclosed in each scan's coverage section when applicable.
 
 ## Verification gates
 
