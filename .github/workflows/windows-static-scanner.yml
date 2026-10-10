@@ -24,5 +24,5 @@ jobs:
       - name: Run ProjectN's configured source analysis
         run: |
           tools/venvs/static-analyzer/Scripts/semgrep.exe --version
-          python -c "import json, subprocess; spec = next(s for s in json.load(open('config/scanners.json', encoding='utf-8'))['scanners'] if s['id'] == 'static'); args = [a.format(root='.', output='semgrep.json', repo='app') for a in spec['args']]; r = subprocess.run(['tools/venvs/static-analyzer/Scripts/semgrep.exe', *args]); print('semgrep exit', r.returncode)"
+          python -c "import json, subprocess; spec = next(s for s in json.load(open('config/scanners.json', encoding='utf-8'))['scanners'] if s['id'] == 'static'); args = [a.format(root='.', output='semgrep.json', repo='app') for a in spec['args']]; import os; r = subprocess.run(['tools/venvs/static-analyzer/Scripts/semgrep.exe', *args], env={**os.environ, **spec.get('env', {})}); print('semgrep exit', r.returncode)"
           python -c "import json; d = json.load(open('semgrep.json', encoding='utf-8')); print('results', len(d['results']), 'files', len(d['paths']['scanned']), 'errors', len(d['errors'])); [print(e.get('type'), str(e.get('message') or e.get('long_msg'))[:300]) for e in d['errors'][:10]]"

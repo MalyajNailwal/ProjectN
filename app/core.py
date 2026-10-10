@@ -474,7 +474,7 @@ def scan_one(spec: dict, values: dict, work: Path, cancel=None) -> tuple[list[di
     timeout = spec.get("full_timeout", spec["timeout"]) if full else spec["timeout"]
     output_spec = {**spec, "inventory_limit": values.get("inventory_limit", FULL_DEFAULTS["inventory_limit"])} if full else spec
     argv = [ready["executable"], *(part.format_map(substitutions) for part in args_template)]
-    scanner_env = {**os.environ, "NMAPDIR": str(ROOT / spec["source"])} if spec["id"] == "ports" else None
+    scanner_env = {**os.environ, **spec.get("env", {}), **({"NMAPDIR": str(ROOT / spec["source"])} if spec["id"] == "ports" else {})}
     try:
         result = run_tool(argv, timeout, cancel, cwd=ROOT, env=scanner_env)
         findings, details = parse_output(output_spec, output)
