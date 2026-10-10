@@ -22,7 +22,7 @@
     {"label":"Accessibility checks","path":"tools/quality/accessibility/source","upstream":"https://github.com/dequelabs/axe-core.git"},
     {"label":"Performance and quality checks","path":"tools/quality/performance/source","upstream":"https://github.com/GoogleChrome/lighthouse.git"},
     {"label":"Dependency vulnerability checks","path":"tools/code/dependency-risk/source","upstream":"https://github.com/google/osv-scanner.git"},
-    {"label":"Out-of-band callback engine","path":"tools/web/callback-service/source","upstream":"https://github.com/projectdiscovery/interactsh.git"},
+    {"label":"Out-of-band callback engine","path":"tools/web/callback-service/source","upstream":"https://github.com/projectdiscovery/interactsh.git","setup":"callback"},
     {"label":"Source analysis rules","path":"tools/code/static-analyzer/checks","upstream":"https://github.com/semgrep/semgrep-rules.git"}
   ]
 }
