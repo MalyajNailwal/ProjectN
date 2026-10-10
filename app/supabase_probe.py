@@ -39,7 +39,11 @@ def request_json(url: str, api_key: str, accept: str, timeout: float):
             status, body = response.status, response.read(CONFIG["max_response_bytes"] + 1)
     except urllib.error.HTTPError as exc:
         with exc:
-            status, body = exc.code, (exc.read(CONFIG["max_response_bytes"] + 1) if exc.fp else b"")
+            status = exc.code
+            try:
+                body = exc.read(CONFIG["max_response_bytes"] + 1) if exc.fp else b""
+            except OSError:
+                body = b""
     except (OSError, ValueError):
         return None, None
     if len(body) > CONFIG["max_response_bytes"]:

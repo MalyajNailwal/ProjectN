@@ -577,6 +577,7 @@ def response_signal_gaps(stages: list[dict]) -> list[dict]:
 
 def execute_scan(request: dict, progress, cancel=None) -> dict:
     from app.firebase_probe import inspect_firebase
+    from app.graphql_probe import inspect_graphql
     from app.infra_probe import inspect_infrastructure
     from app.slopsquat_probe import inspect_slopsquat
     from app.supabase_probe import inspect_supabase
@@ -620,6 +621,7 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
             steps.append({"id": "tls_config", "label": "TLS protocol and cipher configuration"})
             steps.append({"id": "supabase", "label": "Supabase exposure"})
             steps.append({"id": "firebase", "label": "Firebase database exposure"})
+            steps.append({"id": "graphql", "label": "GraphQL introspection"})
         steps.append({"id": "infra", "label": "Infrastructure and stack"})
     steps += [{"id": spec["id"], "label": spec["label"]} for spec in selected]
     if repo_url or local_path:
@@ -694,6 +696,10 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
                     begin("firebase", "Testing Firebase database exposure")
                     found, stage, issues = inspect_firebase(surface_body, cancel)
                     stage.update(source_revision=builtin_revision("app/firebase_probe.py", "config/firebase_probe.json"), rules_dirty=False)
+                    record(found, stage, issues)
+                    begin("graphql", "Testing GraphQL introspection")
+                    found, stage, issues = inspect_graphql(url, cancel)
+                    stage.update(source_revision=builtin_revision("app/graphql_probe.py", "config/graphql_probe.json"), rules_dirty=False)
                     record(found, stage, issues)
                 begin("infra", "Profiling hosting, backend, and frontend signals")
                 found, stage, issues = inspect_infrastructure(surface_headers, surface_body)

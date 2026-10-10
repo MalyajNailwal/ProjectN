@@ -1,0 +1,5 @@
+{
+  "timeout_seconds": 8,
+  "max_response_bytes": 262144,
+  "candidate_paths": ["/graphql", "/api/graphql", "/v1/graphql", "/graphql/console"]
+}
