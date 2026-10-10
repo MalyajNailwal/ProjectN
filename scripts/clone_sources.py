@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -15,7 +16,8 @@ LOCK = json.loads((ROOT / "config/source-lock.json").read_text())["repositories"
 
 
 def git(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=False)
+    options = ["-c", "core.longpaths=true"] if os.name == "nt" else []
+    return subprocess.run(["git", *options, *args], capture_output=True, text=True, check=False)
 
 
 def repositories() -> list[dict[str, str]]:

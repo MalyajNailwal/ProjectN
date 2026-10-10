@@ -17,6 +17,11 @@ class SourceLockTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "paths differ"):
                 clone_sources.repositories()
 
+    def test_windows_git_enables_long_paths_for_upstream_sources(self):
+        with patch.object(clone_sources.os, "name", "nt"), patch.object(clone_sources.subprocess, "run") as command:
+            clone_sources.git("clone", "https://example.invalid/source.git")
+        self.assertEqual(command.call_args.args[0][:4], ["git", "-c", "core.longpaths=true", "clone"])
+
 
 if __name__ == "__main__":
     unittest.main()
