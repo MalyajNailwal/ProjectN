@@ -56,6 +56,8 @@ def main() -> int:
             missing.append(command)
     if missing:
         print(f"        Install: {INSTALL_HINT}")
+    free = shutil.disk_usage(ROOT).free / 1024**3
+    print(f"DISK    {free:.1f} GB free; all scanners keep about 4 GB and need up to 3 GB more while one builds (each setup component checks its own space)")
     print("\nScanner capabilities")
     states = [readiness(spec) for spec in specs()]
     for state in states:

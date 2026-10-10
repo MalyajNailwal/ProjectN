@@ -6,12 +6,13 @@ When the user asks to set up, install, run, or verify ProjectN on their computer
 
 1. Use `python3` on macOS and `py -3` in Windows PowerShell. Run `scripts/doctor.py`. It lists missing prerequisites (Git, Python 3.11+, Node.js 22.19+, and for scanners Go, Java 17+, Ruby, plus Nmap on Windows or a C toolchain on macOS) with the install command for this OS.
 2. Before installing anything, show the user what will be installed and ask. Some installers need administrator approval or open a window the user must finish (Xcode command-line tools on macOS, the Nmap/Npcap installer on Windows). Afterwards open a new terminal so PATH changes apply.
-3. Ask whether the user wants the app only (a few minutes) or all 12 scanners (30–60 minutes and about 10 GB of free disk), then run one of:
+3. Ask whether the user wants the app only (a few minutes) or all 12 scanners (30–60 minutes; about 4 GB kept plus up to 3 GB more while a component builds; `doctor.py` shows free space), then run one of:
    - `scripts/bootstrap.py --verify`
    - `scripts/bootstrap.py --with-scanners --verify`
 
    `--verify` runs the tests, launches a scan from the dashboard in headless Chromium (installing Playwright and Chromium first if they are missing), and, with scanners, runs a Full scan of the bundled test site and this repository that must complete with every scanner.
-4. If a step fails, read its message. `doctor.py` and the setup scripts print the next command for each missing component, such as `scripts/setup_native.py technology --clone`. Fix the cause and rerun the same command; setup is safe to rerun.
+   With limited disk, offer only the components the user needs, for example `scripts/setup_native.py semgrep go` for code scanning; the README lists each component's size. Do not suggest Docker.
+4. If a step fails, read its message. `doctor.py` and the setup scripts print the next command for each missing component, such as `scripts/setup_native.py technology`. Fix the cause and rerun the same command; setup is safe to rerun.
 5. Start the app with `.venv/bin/python scripts/run_local.py` (macOS) or `.\.venv\Scripts\python.exe scripts\run_local.py` (Windows). Give the user `http://127.0.0.1:8000`, the browser check screenshot at `data/ui-check.png`, and the `doctor.py` result.
 
 While doing this:

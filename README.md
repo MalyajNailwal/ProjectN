@@ -38,7 +38,7 @@ The agent follows [AGENTS.md](AGENTS.md): it runs `scripts/doctor.py`, asks befo
 
 ```sh
 python3 scripts/bootstrap.py --verify                   # Windows: py -3 scripts/bootstrap.py --verify
-python3 scripts/bootstrap.py --with-scanners --verify   # all 12 scanners; about 10 GB free disk and 30–60 minutes
+python3 scripts/bootstrap.py --with-scanners --verify   # all 12 scanners; 30–60 minutes, about 4 GB kept (see Full scanner setup)
 ```
 
 ## Full scanner setup (all 12 capabilities)
@@ -57,7 +57,22 @@ python3 scripts/doctor.py                      # shows missing prerequisites and
 python3 scripts/bootstrap.py --with-scanners   # clones, builds, and verifies every scanner
 ```
 
-`--with-scanners` clones the 16 pinned upstream repositories into Git-ignored `tools/` folders, builds or installs the 12 scanner capabilities, and finishes with `doctor.py --strict`, which fails if any capability is not ready. Expect several gigabytes and 30–60 minutes on a first run. Individual components can be set up with `scripts/setup_native.py <component>` (`go`, `callback`, `semgrep`, `browser`, `application`, `accessibility`, `performance`, `technology`, `nmap`).
+`--with-scanners` clones the 16 pinned upstream repositories into Git-ignored `tools/` folders, builds or installs the 12 scanner capabilities, and finishes with `doctor.py --strict`, which fails if any capability is not ready. A first run takes 30–60 minutes (42 minutes on a GitHub Windows runner) and leaves about 4 GB in `tools/` and the browser cache. Build downloads go to `tools/.cache` and are deleted after each component, so your own Go, Gradle, npm, and uv caches are untouched. Setup is safe to rerun after a failure.
+
+Low on disk, or only need some checks? Each component checks its own free space before it starts and clones only its own sources, so a component that does not fit is skipped with a message while the others install. Set up just what you need with `scripts/setup_native.py <component>`:
+
+| Component | Capabilities | Peak disk while building |
+| --- | --- | --- |
+| `semgrep` | Source analysis | about 1.2 GB |
+| `go` | Vulnerability checks, site and API discovery, secret detection, dependency vulnerabilities | about 3 GB |
+| `technology` | Technology profile | about 0.1 GB |
+| `nmap` | Ports and services | about 0.5 GB |
+| `browser` | Rendered pages, configured journeys (needed by `accessibility` and `performance`) | about 1 GB |
+| `accessibility` / `performance` | axe / Lighthouse checks | about 0.2 / 0.8 GB |
+| `application` | ZAP application security checks | about 3 GB |
+| `callback` | Self-hosted out-of-band callback server (optional) | about 0.8 GB |
+
+For example, code scanning only: `python3 scripts/setup_native.py semgrep go`. Scanners that are not set up appear in every report as coverage gaps with the command that adds them. Docker is not needed and would not save space: the scanner images and the Docker runtime are larger than these native installs.
 
 On Windows, ProjectN uses the official Nmap runtime and keeps the Nmap source cloned for inspection; compiling Nmap on Windows additionally needs the upstream `nmap-mswin32-aux` dependencies and Visual Studio, which ProjectN does not automate.
 
