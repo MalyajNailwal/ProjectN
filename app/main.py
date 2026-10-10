@@ -6,7 +6,7 @@ import sqlite3
 import threading
 import time
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -36,15 +36,26 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="ProjectN", version="0.1.0", lifespan=lifespan)
 
 
+@contextmanager
 def connection():
+    """Open the history database for one operation and always close it.
+
+    sqlite3's own context manager only commits; an unclosed connection keeps the file locked on Windows.
+    """
     DATA.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DB, timeout=30)
-    db.row_factory = sqlite3.Row
-    db.execute("CREATE TABLE IF NOT EXISTS scans (id TEXT PRIMARY KEY, created REAL NOT NULL, status TEXT NOT NULL, progress TEXT NOT NULL, target TEXT NOT NULL, result TEXT, error TEXT)")
-    if "steps" not in {row[1] for row in db.execute("PRAGMA table_info(scans)")}:
-        db.execute("ALTER TABLE scans ADD COLUMN steps TEXT")
-    db.commit()
-    return db
+    try:
+        db.row_factory = sqlite3.Row
+        db.execute("CREATE TABLE IF NOT EXISTS scans (id TEXT PRIMARY KEY, created REAL NOT NULL, status TEXT NOT NULL, progress TEXT NOT NULL, target TEXT NOT NULL, result TEXT, error TEXT)")
+        if "steps" not in {row[1] for row in db.execute("PRAGMA table_info(scans)")}:
+            db.execute("ALTER TABLE scans ADD COLUMN steps TEXT")
+        yield db
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 class ScanRequest(BaseModel):
