@@ -14,6 +14,7 @@ PYTHON = ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/pyt
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--require-stage", action="append", default=[], help="Require the named scanner in the fixture scan")
+    parser.add_argument("--ui", action="store_true", help="Launch the fixture scan from the dashboard in a real browser")
     options = parser.parse_args()
     if not PYTHON.is_file():
         raise RuntimeError("Local Python environment is missing; run scripts/bootstrap.py first")
@@ -21,6 +22,8 @@ def main() -> None:
     smoke = [str(PYTHON), str(ROOT / "scripts/smoke_local.py")]
     for stage in options.require_stage:
         smoke.extend(("--require-stage", stage))
+    if options.ui:
+        smoke.append("--ui")
     subprocess.run(smoke, cwd=ROOT, check=True)
 
 

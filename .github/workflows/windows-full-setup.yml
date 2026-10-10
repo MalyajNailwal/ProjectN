@@ -11,7 +11,6 @@ jobs:
       contents: read
     env:
       GOMAXPROCS: '2'
-      PROJECTN_FIXTURE_USER: fixture-user
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -45,11 +44,7 @@ jobs:
         run: python scripts/bootstrap.py --with-scanners
       - name: ProjectN rule checks with the Windows scanners
         run: .venv/Scripts/python.exe -m unittest tests.test_own_rules -v
+      - name: Dashboard scan in a real browser
+        run: .venv/Scripts/python.exe scripts/smoke_local.py --ui
       - name: Full fixture scan requiring all 12 scanner capabilities
-        run: >-
-          .venv/Scripts/python.exe scripts/smoke_local.py --profile full --timeout 3000
-          --field local_path=. --field journey_file=tests/fixtures/journey.json
-          --field port_range=1-1024 --field template_rate=150
-          --require-stage technology --require-stage templates --require-stage ports --require-stage crawler
-          --require-stage browser --require-stage journeys --require-stage application --require-stage accessibility
-          --require-stage performance --require-stage static --require-stage secrets --require-stage dependencies
+        run: .venv/Scripts/python.exe scripts/smoke_local.py --all-capabilities

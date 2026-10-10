@@ -31,5 +31,5 @@ jobs:
           python scripts/clone_sources.py --verify --path tools/web/technology-profiler/source
       - name: Verify scanner setup entry point
         run: python scripts/setup_native.py --help
-      - name: Run tests and start the app
-        run: python scripts/verify_native.py --require-stage technology
+      - name: Run tests, then scan from the dashboard in a real browser
+        run: python scripts/verify_native.py --require-stage technology --ui

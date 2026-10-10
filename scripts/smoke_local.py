@@ -30,7 +30,19 @@ class FixtureServer(http.server.ThreadingHTTPServer):
         pass
 
 
-def scan_fixture(base: str, required_stages: list[str], profile: str, fields: dict, timeout: float) -> None:
+def browser_python() -> Path:
+    """Return the Playwright runtime's Python, installing the runtime and Chromium first if needed."""
+    python = ROOT / "tools/venvs/browser-journeys" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    if not python.is_file() or subprocess.run([str(python), "-c", "import playwright"], capture_output=True, check=False).returncode:
+        print("Playwright runtime not found; installing it with Chromium (about 200 MB)...", flush=True)
+        subprocess.run([sys.executable, str(ROOT / "scripts/clone_sources.py"), "--path", "tools/web/browser-journeys/python-bindings"], check=True)
+        subprocess.run([sys.executable, str(ROOT / "scripts/setup_native.py"), "browser"], check=True)
+    else:
+        subprocess.run([str(python), "-m", "playwright", "install", "chromium"], check=True)
+    return python
+
+
+def scan_fixture(base: str, required_stages: list[str], profile: str, fields: dict, timeout: float, ui: Path | None = None) -> None:
     site = ROOT / "tests/fixtures/site"
     handler = functools.partial(FixtureHandler, directory=str(site))
     server = FixtureServer(("127.0.0.1", 0), handler)
@@ -38,9 +50,17 @@ def scan_fixture(base: str, required_stages: list[str], profile: str, fields: di
     thread.start()
     try:
         target = f"http://127.0.0.1:{server.server_port}/"
-        request = urllib.request.Request(base + "/api/scans", data=json.dumps({"url": target, "profile": profile, "authorized_intrusive": profile == "full", **fields}).encode(), headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(request, timeout=5) as response:
-            scan_id = json.load(response)["id"]
+        if ui:
+            # Launch through the dashboard form in a real browser, then check the stored report below.
+            screenshot = ROOT / "data/ui-check.png"
+            screenshot.parent.mkdir(exist_ok=True)
+            subprocess.run([str(ui), str(ROOT / "scripts/ui_check.py"), base, target, str(screenshot), str(timeout)], check=True, timeout=timeout + 300)
+            with urllib.request.urlopen(base + "/api/scans", timeout=5) as response:
+                scan_id = json.load(response)[0]["id"]
+        else:
+            request = urllib.request.Request(base + "/api/scans", data=json.dumps({"url": target, "profile": profile, "authorized_intrusive": profile == "full", **fields}).encode(), headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(request, timeout=5) as response:
+                scan_id = json.load(response)["id"]
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with urllib.request.urlopen(base + f"/api/scans/{scan_id}", timeout=5) as response:
@@ -74,7 +94,18 @@ def main() -> int:
     parser.add_argument("--profile", choices=("standard", "full"), default="standard", help="Fixture scan profile")
     parser.add_argument("--field", action="append", default=[], metavar="KEY=VALUE", help="Extra scan request field, such as local_path=. or port_range=1-1024; may be repeated")
     parser.add_argument("--timeout", type=float, default=180, help="Seconds to wait for the fixture scan")
+    parser.add_argument("--ui", action="store_true", help="Launch the Standard scan from the dashboard in headless Chromium (installs Playwright when missing)")
+    parser.add_argument("--all-capabilities", action="store_true", help="Full scan of the fixture and this repository that requires every configured scanner")
     options = parser.parse_args()
+    if options.ui and (options.all_capabilities or options.profile != "standard" or options.field):
+        parser.error("--ui launches a Standard scan from the dashboard form; run --all-capabilities separately")
+    if options.all_capabilities:
+        options.profile = "full"
+        options.field = [f"local_path={ROOT}", f"journey_file={ROOT / 'tests/fixtures/journey.json'}", "port_range=1-1024", "template_rate=150", *options.field]
+        options.require_stage += [spec["id"] for spec in json.loads((ROOT / "config/scanners.json").read_text(encoding="utf-8"))["scanners"]]
+        options.timeout = max(options.timeout, 3000)
+        os.environ.setdefault("PROJECTN_FIXTURE_USER", "fixture-user")
+    ui = browser_python() if options.ui else None
     fields = {}
     for item in options.field:
         key, _, value = item.partition("=")
@@ -116,8 +147,8 @@ def main() -> int:
                     time.sleep(0.25)
             if health.get("status") != "ok" or "ProjectN" not in page or not isinstance(scanners, list):
                 raise RuntimeError("App returned an incomplete health, dashboard, or scanner response")
-            print(f"Native app smoke passed: dashboard, health, and {len(scanners)} scanner status entries")
-            scan_fixture(base, options.require_stage, options.profile, fields, options.timeout)
+            print(f"Native app smoke passed: dashboard, health, and {len(scanners)} scanner status entries", flush=True)
+            scan_fixture(base, options.require_stage, options.profile, fields, options.timeout, ui)
             return 0
         finally:
             process.terminate()

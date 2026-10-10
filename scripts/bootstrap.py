@@ -29,6 +29,7 @@ def require(command: str, reason: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--with-scanners", action="store_true", help="Also download and build all scanner runtimes (large; needs native toolchains)")
+    parser.add_argument("--verify", action="store_true", help="Afterwards run the tests, a dashboard check in a real browser, and with --with-scanners a fixture scan that requires every scanner")
     options = parser.parse_args()
 
     if sys.version_info < (3, 11):
@@ -66,6 +67,11 @@ def main() -> int:
         doctor = subprocess.run([str(PYTHON), str(ROOT / "scripts/doctor.py"), "--strict"], cwd=ROOT, check=False)
         if setup.returncode or doctor.returncode:
             raise RuntimeError("Full scanner setup is incomplete; review the component failures and doctor output above")
+    if options.verify:
+        run(str(PYTHON), "-m", "unittest", "discover", "-s", "tests")
+        run(str(PYTHON), str(ROOT / "scripts/smoke_local.py"), "--ui")
+        if options.with_scanners:
+            run(str(PYTHON), str(ROOT / "scripts/smoke_local.py"), "--all-capabilities")
     print("\nProjectN is ready to start:", flush=True)
     print(f"  {PYTHON} {ROOT / 'scripts/run_local.py'}", flush=True)
     if not options.with_scanners:
