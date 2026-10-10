@@ -255,6 +255,16 @@ def readiness(spec: dict) -> dict:
                     digest.update(chunk)
         rules_revision = digest.hexdigest()
         rules_dirty = False
+    if spec.get("local_rules"):
+        # ProjectN's own checks are part of the rule revision, so rescans notice rule changes.
+        local = ROOT / spec["local_rules"]
+        digest = hashlib.sha256((rules_revision or "").encode())
+        for rule_file in sorted(path for path in local.rglob("*") if path.is_file()):
+            digest.update(rule_file.relative_to(ROOT).as_posix().encode())
+            digest.update(rule_file.read_bytes())
+        rules_revision = digest.hexdigest()
+        if not local.is_dir():
+            missing.append(f"ProjectN rules folder {spec['local_rules']} is missing")
     return {"id": spec["id"], "label": spec["label"], "ready": not missing, "source_present": (source / ".git").exists(), "source_revision": revision, "source_version": source_version, "runtime_version": runtime_version, "runtime_origin": "Windows Nmap executable" if spec["id"] == "ports" and os.name == "nt" else "version-matched local package" if spec["id"] in {"static", "browser", "journeys", "accessibility", "performance"} else "local source build or source script", "rules_revision": rules_revision, "rules_dirty": rules_dirty, "executable": executable, "runtime": runtime, "limitations": missing, "resolution": "Install official Nmap for Windows and add it to PATH or set PROJECTN_SCANNER_PORTS; the source checkout is kept separately." if spec["id"] == "ports" and os.name == "nt" and missing else f"Run `python scripts/setup_native.py {spec['setup']} --clone` from the ProjectN folder (on Windows `py -3`), or set PROJECTN_SCANNER_{spec['id'].upper()} to your own build, then refresh Tool setup." if missing else None}
 
 

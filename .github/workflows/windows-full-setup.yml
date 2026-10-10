@@ -43,6 +43,8 @@ jobs:
           nmap --version
       - name: Full setup from the README command
         run: python scripts/bootstrap.py --with-scanners
+      - name: ProjectN rule checks with the Windows scanners
+        run: .venv/Scripts/python.exe -m unittest tests.test_own_rules -v
       - name: Full fixture scan requiring all 12 scanner capabilities
         run: >-
           .venv/Scripts/python.exe scripts/smoke_local.py --profile full --timeout 3000

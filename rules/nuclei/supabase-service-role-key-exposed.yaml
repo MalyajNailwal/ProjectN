@@ -1,0 +1,45 @@
+id: supabase-service-role-key-exposed
+
+info:
+  name: Supabase service_role key exposed to browsers
+  author: ProjectN
+  severity: critical
+  description: >-
+    The page or its first same-origin script contains a Supabase JWT with the
+    service_role claim. That key bypasses Row Level Security and gives full database
+    access to anyone who loads the site.
+  remediation: >-
+    Rotate the service_role key in the Supabase dashboard, remove it from client code,
+    and perform privileged database operations only in server-side code. Browser code
+    must use the anon key with Row Level Security.
+  reference:
+    - https://supabase.com/docs/guides/api/api-keys
+  tags: exposure,supabase,jwt,projectn
+
+# The regex alternatives are the base64url forms of "role":"service_role" at each byte offset of a JWT payload.
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+    extractors:
+      - type: regex
+        name: script
+        part: body
+        internal: true
+        group: 1
+        regex:
+          - '<script[^>]+src="(/[^"/][^"]*\.js)"'
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - 'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*(?:InJvbGUiOiJzZXJ2aWNlX3JvbGUi|Jyb2xlIjoic2VydmljZV9yb2xlI|icm9sZSI6InNlcnZpY2Vfcm9sZS)[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+'
+
+  - method: GET
+    path:
+      - "{{RootURL}}{{script}}"
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - 'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*(?:InJvbGUiOiJzZXJ2aWNlX3JvbGUi|Jyb2xlIjoic2VydmljZV9yb2xlI|icm9sZSI6InNlcnZpY2Vfcm9sZS)[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+'
