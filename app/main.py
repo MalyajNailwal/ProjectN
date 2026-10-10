@@ -232,7 +232,10 @@ def ui(path: str):
     file = (DIST / path).resolve()
     if file.is_file() and file.is_relative_to(DIST.resolve()):
         return FileResponse(file)
+    if path.startswith("assets/"):
+        raise HTTPException(404, "Dashboard asset not found; reload the page after rebuilding the dashboard.")
     index = DIST / "index.html"
     if index.is_file():
-        return FileResponse(index)
+        # Revalidate on every load so a rebuilt dashboard never references deleted hashed assets.
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
     raise HTTPException(404, "UI has not been built. Run npm install and npm run build in web/.")
