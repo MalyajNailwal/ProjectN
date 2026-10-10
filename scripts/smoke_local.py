@@ -87,8 +87,9 @@ def main() -> int:
         port = listener.getsockname()[1]
     base = f"http://127.0.0.1:{port}"
     # The server log goes to a file: an unread pipe fills during long scans and blocks the app.
-    # A separate data directory keeps smoke scans out of the user's history and running scans.
-    with tempfile.TemporaryFile(mode="w+") as log, tempfile.TemporaryDirectory(prefix="projectn-smoke-") as data:
+    # A separate data directory keeps smoke scans out of the user's history and running scans;
+    # Windows can briefly keep the SQLite file locked after the server exits, so cleanup is best effort.
+    with tempfile.TemporaryFile(mode="w+") as log, tempfile.TemporaryDirectory(prefix="projectn-smoke-", ignore_cleanup_errors=True) as data:
         process = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port)],
             cwd=ROOT,
