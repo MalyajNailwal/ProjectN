@@ -84,12 +84,23 @@ class TargetValidationTests(unittest.TestCase):
                 execute_scan({"url": "https://example.test", "profile": "standard", "journey_file": str(journey)}, lambda *_: None)
 
     def test_full_scan_options_are_configurable_and_validate_ports(self):
-        options = full_scan_options({"port_range": "443,8000-9000", "crawl_depth": 42})
+        options = full_scan_options({"port_depth": "custom", "port_range": "443,8000-9000", "crawl_depth": 42})
         self.assertEqual(options["port_range"], "443,8000-9000")
+        self.assertEqual((options["port_flag"], options["port_value"]), ("-p", "443,8000-9000"))
         self.assertEqual(options["crawl_depth"], 42)
         for port_range in ("0", "65536", "9000-8000", "80,abc"):
             with self.subTest(port_range=port_range), self.assertRaises(ValueError):
-                full_scan_options({"port_range": port_range})
+                full_scan_options({"port_depth": "custom", "port_range": port_range})
+
+    def test_port_depth_presets_select_nmaps_top_ports(self):
+        presets = {"quick": "100", "standard": "1000", "thorough": "5000"}
+        for depth, count in presets.items():
+            with self.subTest(depth=depth):
+                options = full_scan_options({"port_depth": depth})
+                self.assertEqual((options["port_flag"], options["port_value"]), ("--top-ports", count))
+        self.assertEqual((full_scan_options({"port_depth": "full"})["port_flag"], full_scan_options({"port_depth": "full"})["port_value"]), ("-p", "1-65535"))
+        with self.assertRaisesRegex(ValueError, "Port depth"):
+            full_scan_options({"port_depth": "extreme"})
 
 
 class OutputTests(unittest.TestCase):

@@ -68,15 +68,31 @@ def run_tool(argv: list[str], timeout: float, cancel=None, **options) -> subproc
                 raise subprocess.TimeoutExpired(argv, timeout) from None
 
 
+# Nmap's own frequency-ranked port lists; --top-ports N covers the services most commonly found open.
+# A full 1-65535 scan is still available (depth "full") but rarely changes the result against a real host
+# behind a firewall or CDN, where almost every port above the common set answers "closed" or "filtered".
+PORT_DEPTHS = {"quick": "100", "standard": "1000", "thorough": "5000"}
+
+
 def full_scan_options(request: dict) -> dict:
     options = {key: request.get(key) if request.get(key) is not None else default for key, default in FULL_DEFAULTS.items()}
-    port_range = options["port_range"]
-    if not isinstance(port_range, str) or not re.fullmatch(r"\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*", port_range):
-        raise ValueError("Port range must be comma-separated TCP ports or ranges, such as 80,443,8000-9000.")
-    for segment in port_range.split(","):
-        bounds = [int(part) for part in segment.split("-")]
-        if any(port < 1 or port > 65535 for port in bounds) or bounds[0] > bounds[-1]:
-            raise ValueError("Port range must contain valid TCP ports from 1 through 65535.")
+    depth = options.get("port_depth") or "standard"
+    if depth not in {*PORT_DEPTHS, "full", "custom"}:
+        raise ValueError("Port depth must be quick, standard, thorough, full, or custom.")
+    options["port_depth"] = depth
+    if depth == "custom":
+        port_range = options["port_range"]
+        if not isinstance(port_range, str) or not re.fullmatch(r"\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*", port_range):
+            raise ValueError("Port range must be comma-separated TCP ports or ranges, such as 80,443,8000-9000.")
+        for segment in port_range.split(","):
+            bounds = [int(part) for part in segment.split("-")]
+            if any(port < 1 or port > 65535 for port in bounds) or bounds[0] > bounds[-1]:
+                raise ValueError("Port range must contain valid TCP ports from 1 through 65535.")
+        options["port_flag"], options["port_value"] = "-p", port_range
+    elif depth == "full":
+        options["port_flag"], options["port_value"] = "-p", "1-65535"
+    else:
+        options["port_flag"], options["port_value"] = "--top-ports", PORT_DEPTHS[depth]
     for key in ("crawl_depth", "crawl_duration_minutes", "template_rate", "inventory_limit", "browser_page_limit"):
         if type(options[key]) is not int or options[key] < 1:
             raise ValueError(f"{key} must be a positive whole number.")
@@ -648,7 +664,7 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
             if repo:
                 revision = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10, shell=False)
                 commit = revision.stdout.strip() if revision.returncode == 0 else None
-            values = {"url": url or "", "host": host or "", "repo": str(repo) if repo else "", "journey_file": str(journey_file) if journey_file else "", "oob_server": oob_server or "", "oob_token_env": oob_token_env or "", "profile": profile, "port_range": full_options["port_range"], "crawl_depth": str(full_options["crawl_depth"]), "crawl_duration": f"{full_options['crawl_duration_minutes']}m", "template_rate": str(full_options["template_rate"]), "inventory_limit": full_options["inventory_limit"], "browser_page_limit": str(full_options["browser_page_limit"])}
+            values = {"url": url or "", "host": host or "", "repo": str(repo) if repo else "", "journey_file": str(journey_file) if journey_file else "", "oob_server": oob_server or "", "oob_token_env": oob_token_env or "", "profile": profile, "port_range": full_options["port_range"], "port_flag": full_options.get("port_flag", "--top-ports"), "port_value": full_options.get("port_value", "1000"), "crawl_depth": str(full_options["crawl_depth"]), "crawl_duration": f"{full_options['crawl_duration_minutes']}m", "template_rate": str(full_options["template_rate"]), "inventory_limit": full_options["inventory_limit"], "browser_page_limit": str(full_options["browser_page_limit"])}
             if url:
                 begin("surface", "Inspecting HTTP surface")
                 found, stage, issues = inspect_website(url, host)

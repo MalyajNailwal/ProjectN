@@ -79,6 +79,7 @@ class ScanRequest(BaseModel):
     oob_token_env: str | None = Field(default=None, max_length=128)
     profile: str = Field(default="standard", pattern="^(standard|deep|full)$")
     authorized_intrusive: bool = False
+    port_depth: str | None = Field(default=None, pattern="^(quick|standard|thorough|full|custom)$")
     port_range: str | None = Field(default=None, max_length=1024)
     crawl_depth: int | None = Field(default=None, ge=1)
     crawl_duration_minutes: int | None = Field(default=None, ge=1)

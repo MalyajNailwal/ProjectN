@@ -102,7 +102,7 @@ def main() -> int:
         parser.error("--ui launches a Standard scan from the dashboard form; run --all-capabilities separately")
     if options.all_capabilities:
         options.profile = "full"
-        options.field = [f"local_path={ROOT}", f"journey_file={ROOT / 'tests/fixtures/journey.json'}", "port_range=1-1024", "template_rate=150", *options.field]
+        options.field = [f"local_path={ROOT}", f"journey_file={ROOT / 'tests/fixtures/journey.json'}", "port_depth=custom", "port_range=1-1024", "template_rate=150", *options.field]
         options.require_stage += [spec["id"] for spec in json.loads((ROOT / "config/scanners.json").read_text(encoding="utf-8"))["scanners"]]
         options.timeout = max(options.timeout, 3000)
         os.environ.setdefault("PROJECTN_FIXTURE_USER", "fixture-user")

@@ -196,6 +196,14 @@ p{margin:0}
 .profile.on{border-color:var(--accent);background:var(--accent-soft)}
 .profile.on svg{color:var(--accent)}
 .full-options{display:grid;gap:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}
+.port-depth-row{display:grid;gap:7px}
+.port-depth-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:7px}
+.depth-chip{display:grid;gap:2px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);text-align:left;transition:border-color .15s,background .15s}
+.depth-chip strong{font-size:12px;font-weight:600}
+.depth-chip small{color:var(--text-3);font-size:10.5px}
+.depth-chip:hover{border-color:var(--border-strong)}
+.depth-chip.on{border-color:var(--accent);background:var(--accent-soft)}
+.depth-chip.on strong{color:var(--accent-strong)}
 .option-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .option-grid label,.wide-field{display:grid;gap:5px;font-size:12px;color:var(--text-2);font-weight:540}
 .wide-field span{color:var(--text-3);font-weight:450}

@@ -1,4 +1,5 @@
 {
+  "port_depth": "standard",
   "port_range": "1-65535",
   "crawl_depth": 20,
   "crawl_duration_minutes": 120,
