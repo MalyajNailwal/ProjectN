@@ -1,6 +1,9 @@
-"""Hosting/CDN, backend-as-a-service, and framework signals come only from already-fetched headers and body."""
+"""Hosting/CDN, backend-as-a-service, and framework signals come only from already-fetched headers and body
+(except baas in Full scope, which may also check a bounded number of already-discovered linked scripts)."""
 
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from app.infra_probe import inspect_infrastructure
 
@@ -42,6 +45,33 @@ class InfraProbeTests(unittest.TestCase):
         found, stage, issues = inspect_infrastructure({"Server": "Vercel"}, "")
         self.assertEqual(stage["details"]["hosting"][0]["id"], "vercel")
         self.assertEqual(stage["details"]["baas"], [])
+
+    def test_baas_signal_found_only_in_a_linked_script_is_still_matched(self):
+        script = b"https://abcdefghijklmnopqrst.supabase.co supabase-js"
+
+        class ScriptPage(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(script)))
+                self.end_headers()
+                self.wfile.write(script)
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), ScriptPage)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        self.addCleanup(server.server_close)
+        script_url = f"http://127.0.0.1:{server.server_port}/chunk.js"
+
+        without_links = inspect_infrastructure({}, "<html>plain page, no supabase mentioned</html>")[1]
+        self.assertEqual(without_links["details"]["baas"], [])
+
+        with_links = inspect_infrastructure({}, "<html>plain page, no supabase mentioned</html>", links=[script_url])[1]
+        self.assertEqual(with_links["details"]["baas"][0]["id"], "supabase")
+        # The root body used for hosting/frameworks matching must stay untouched by the script fetch.
+        self.assertEqual(with_links["details"]["frameworks"], [])
 
 
 if __name__ == "__main__":

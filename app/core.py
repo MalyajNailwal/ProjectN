@@ -751,7 +751,7 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
                     stage.update(source_revision=builtin_revision("app/graphql_probe.py", "config/graphql_probe.json"), rules_dirty=False)
                     record(found, stage, issues)
                 begin("infra", "Profiling hosting, backend, and frontend signals")
-                found, stage, issues = inspect_infrastructure(surface_headers, surface_body)
+                found, stage, issues = inspect_infrastructure(surface_headers, surface_body, links=surface_links if profile == "full" else ())
                 stage.update(source_revision=builtin_revision("app/infra_probe.py", "config/infra_signals.json"), rules_dirty=False)
                 record(found, stage, issues)
             runnable = [spec for spec in selected if spec["kind"] != "code" or repo]

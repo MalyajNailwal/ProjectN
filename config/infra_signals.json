@@ -4,6 +4,10 @@
     "weak": "possible"
   },
   "strong_threshold_percent": 60,
+  "timeout_seconds": 8,
+  "max_scripts_checked": 5,
+  "max_script_bytes": 3000000,
+  "priority_script_words": ["page", "layout", "main", "index", "app", "client", "bundle"],
   "hosting": [
     {"id": "cloudflare", "label": "Cloudflare", "signals": [
       {"type": "header", "name": "server", "pattern": "cloudflare", "weight": 3, "evidence": "Server header"},
