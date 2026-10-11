@@ -62,8 +62,15 @@ def scan_fixture(base: str, required_stages: list[str], profile: str, fields: di
                 scan_id = json.load(response)["id"]
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            with urllib.request.urlopen(base + f"/api/scans/{scan_id}", timeout=5) as response:
-                scan = json.load(response)
+            try:
+                with urllib.request.urlopen(base + f"/api/scans/{scan_id}", timeout=5) as response:
+                    scan = json.load(response)
+            except (OSError, urllib.error.URLError):
+                # A single slow or dropped poll on a busy machine (a loaded CI runner running 12 scanners
+                # concurrently) is not itself a failure; the outer deadline above is what actually bounds
+                # how long this waits, and a transient blip here must not abort an otherwise-healthy scan.
+                time.sleep(2)
+                continue
             if scan["status"] == "completed":
                 report = scan["result"]
                 if not report or not report.get("stages") or report["target"].get("url") != target:
