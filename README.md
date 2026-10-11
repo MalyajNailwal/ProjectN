@@ -99,7 +99,7 @@ These 10 need no extra install; they are pure-Python checks built into the app i
 | TLS certificate and connection | Every website scan over HTTPS |
 | TLS protocol and cipher configuration | Full |
 | Infrastructure and stack (hosting/CDN, backend-as-a-service, frontend framework) | Every website scan |
-| Supabase exposure (tables and storage buckets readable without authentication) | Full, if a Supabase project is found on the page |
+| Supabase exposure (tables and storage buckets readable without authentication, and a leaked service_role admin key) | Full, if a Supabase project or key is found on the page or a linked script |
 | Firebase database exposure | Full, if a Firebase project is found on the page |
 | GraphQL introspection | Full |
 | Signup rate limiting | Full, if the browser stage found a signup-shaped form |

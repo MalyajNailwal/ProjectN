@@ -7,13 +7,13 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
-from app.supabase_probe import discover_project, inspect_supabase
+from app.supabase_probe import decode_jwt_payload, discover_project, inspect_supabase, leaked_service_role_key
 
 
-def fake_jwt() -> str:
+def fake_jwt(role: str = "anon", iss: str = "supabase", ref: str = "abcdefghijklmnopqrst") -> str:
     import base64
     part = lambda data: base64.urlsafe_b64encode(json.dumps(data).encode()).decode().rstrip("=")
-    return f"{part({'alg': 'HS256'})}.{part({'role': 'anon'})}.ZmFrZQ"
+    return f"{part({'alg': 'HS256'})}.{part({'role': role, 'iss': iss, 'ref': ref})}.ZmFrZQ"
 
 
 class FakePostgrest(BaseHTTPRequestHandler):
@@ -148,6 +148,40 @@ class SupabaseProbeTests(unittest.TestCase):
             found, stage, issues = inspect_supabase("<html>no supabase here</html>", links=[script_url])
         self.assertEqual(stage["details"]["project_url"], "https://abcdefghijklmnopqrst.supabase.co")
         self.assertNotEqual(stage["state"], "skipped")
+
+    def test_decode_jwt_payload_reads_claims_without_a_secret(self):
+        token = fake_jwt(role="service_role", ref="xyz")
+        payload = decode_jwt_payload(token)
+        self.assertEqual(payload["role"], "service_role")
+        self.assertEqual(payload["ref"], "xyz")
+        self.assertIsNone(decode_jwt_payload("not-a-jwt"))
+
+    def test_leaked_service_role_key_ignores_anon_and_unrelated_tokens(self):
+        anon = fake_jwt(role="anon")
+        other_service = fake_jwt(role="service_role", iss="some-other-issuer")
+        self.assertIsNone(leaked_service_role_key([f"<script>{anon}</script>", f"<script>{other_service}</script>"]))
+
+    def test_leaked_service_role_key_found_across_candidates(self):
+        leaked = fake_jwt(role="service_role", ref="leaked-project")
+        payload = leaked_service_role_key(["clean page", f"<script>{leaked}</script>"])
+        self.assertEqual(payload["ref"], "leaked-project")
+
+    def test_leaked_service_role_key_becomes_a_critical_finding_even_without_a_discoverable_project(self):
+        leaked = fake_jwt(role="service_role", ref="leaked-project")
+        found, stage, issues = inspect_supabase(f"<script>{leaked}</script>", links=[])
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["severity"], "critical")
+        self.assertEqual(found[0]["rule"], "supabase:service-role-key-exposed")
+        self.assertIn("leaked-project", found[0]["location"])
+        self.assertNotIn(leaked, json.dumps(found))  # the key's own value is never stored
+        self.assertEqual(stage["state"], "partial")
+
+    def test_leaked_service_role_key_finding_appears_alongside_table_findings(self):
+        leaked = fake_jwt(role="service_role", ref="leaked-project")
+        base_url = self.run_server(exposed_tables={"profiles"}, schema={"profiles": {}})
+        with patch("app.supabase_probe.discover_project", return_value=(base_url, "fixture-key")):
+            found, stage, issues = inspect_supabase(f"<script>{leaked}</script>", links=[])
+        self.assertEqual({item["rule"] for item in found}, {"supabase:service-role-key-exposed", "supabase:rls-missing"})
 
     def test_cancel_stops_early_and_reports_partial(self):
         base_url = self.run_server(exposed_tables=set(), schema={"users": {}})

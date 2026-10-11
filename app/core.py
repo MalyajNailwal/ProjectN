@@ -309,20 +309,26 @@ def finding(scanner: str, title: str, severity: str, location: str, evidence: st
     return {"id": str(uuid.uuid4()), "scanner": scanner, "title": title, "severity": severity.lower(), "location": location, "evidence": evidence[:1000], "remediation": remediation, "rule": rule, "confidence": confidence, "verification": "Apply the fix, then rerun this scan against the same target and check."}
 
 
+def _prioritized_scripts(links: list[str], max_scripts: int, priority_words: list[str]) -> list[str]:
+    """Same-host .js URLs from `links`, scripts whose path matches a bundler convention in `priority_words`
+    (such as "page" or "layout") sorted first -- matched against the URL's path only, since the host itself
+    (such as "...vercel.app") can otherwise contain a priority word and make every script tie, silently
+    turning this into a no-op reorder."""
+    scripts = [link for link in links if link.endswith(".js")]
+    scripts.sort(key=lambda url: not any(word in urlparse(url).path.lower() for word in priority_words))
+    return scripts[:max_scripts]
+
+
 def discover_in_linked_scripts(body: str, links: list[str], find, timeout: float, max_scripts: int, max_bytes: int, priority_words: list[str] = ()):
     """Try `find` (a probe's own single-body discovery function) against the page body first, then against up to
-    `max_scripts` same-host .js URLs the surface stage already discovered -- scripts whose name matches a bundler
-    convention in `priority_words` (such as "page" or "layout") checked first, since frameworks like Next.js and
-    Vite inline backend URLs and keys into a bundled script rather than server-rendered HTML, and a modern app can
-    ship dozens of chunks. Stops at the first match; never fetches more than `max_scripts`."""
+    `max_scripts` same-host .js URLs the surface stage already discovered, stopping at the first match -- never
+    fetching more scripts than it needs to. Frameworks such as Next.js and Vite inline backend URLs and keys into
+    a bundled script rather than server-rendered HTML, so a root-page-only search misses them for most modern
+    single-page apps."""
     found = find(body)
     if found:
         return found
-    scripts = [link for link in links if link.endswith(".js")]
-    # Match against the URL's path only -- the host itself (such as "...vercel.app") can otherwise contain
-    # a priority word and make every script tie, silently turning this into a no-op reorder.
-    scripts.sort(key=lambda url: not any(word in urlparse(url).path.lower() for word in priority_words))
-    for script_url in scripts[:max_scripts]:
+    for script_url in _prioritized_scripts(links, max_scripts, priority_words):
         try:
             with urllib.request.urlopen(urllib.request.Request(script_url), timeout=timeout) as response:
                 script_body = response.read(max_bytes + 1).decode("utf-8", "replace")
@@ -332,6 +338,20 @@ def discover_in_linked_scripts(body: str, links: list[str], find, timeout: float
         if found:
             return found
     return None
+
+
+def fetch_same_host_scripts(links: list[str], timeout: float, max_scripts: int, max_bytes: int, priority_words: list[str] = ()) -> list[str]:
+    """Fetch up to `max_scripts` same-host .js URLs from `links` (see discover_in_linked_scripts) unconditionally
+    -- for a check such as a credential scan that must look at every fetched script rather than stopping at the
+    first one that answers a single question. A script that fails to fetch is silently skipped, not retried."""
+    bodies = []
+    for script_url in _prioritized_scripts(links, max_scripts, priority_words):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(script_url), timeout=timeout) as response:
+                bodies.append(response.read(max_bytes + 1).decode("utf-8", "replace"))
+        except (OSError, ValueError):
+            continue
+    return bodies
 
 
 def port_in_ranges(port: int, ranges: list[str]) -> bool:

@@ -1,4 +1,5 @@
-"""Test whether tables and storage buckets behind a Supabase project discovered on the page are exposed.
+"""Test whether tables and storage buckets behind a Supabase project discovered on the page are exposed, and
+whether a Supabase service_role key has been leaked into client-side code.
 
 This is an active check: it only runs in Full scope, where execute_scan already requires explicit scan-time
 authorization before anything starts. It only queries the Supabase project discovered on the target's own
@@ -9,17 +10,25 @@ otherwise tries a short, fixed list of common table-name guesses -- never an unb
 never stores actual row values in the report: only the table name, its column names, and the fact that at
 least one row came back. Storage buckets are checked with a single metadata-only request (no file listing or
 download).
+
+Separately, every JWT found on the page or its linked scripts has its own payload decoded (never its
+signature verified -- the payload is base64, not encrypted, so this needs no secret) to check whether any of
+them is a genuine Supabase service_role key: the project's admin credential, which bypasses every Row Level
+Security policy on every table and bucket, public or private. This check does not depend on a project being
+otherwise discovered, and the key's actual value is never included in the report, only its (non-secret)
+role/issuer/project-ref claims.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-from app.core import discover_in_linked_scripts, finding, gap
+from app.core import fetch_same_host_scripts, finding, gap
 
 CONFIG = json.loads((Path(__file__).resolve().parent.parent / "config" / "supabase_probe.json").read_text(encoding="utf-8"))
 PROJECT_RE = re.compile(r"https://([a-z0-9]{20})\.supabase\.co")
@@ -33,6 +42,30 @@ def discover_project(body: str) -> tuple[str, str] | None:
     if not project or not key:
         return None
     return f"https://{project.group(1)}.supabase.co", key.group(0)
+
+
+def decode_jwt_payload(token: str) -> dict | None:
+    """The unverified claims from a JWT's payload segment -- reads what the token claims to be, never
+    validates the signature, since the payload is base64, not encrypted, and needs no secret to read."""
+    try:
+        payload_b64 = token.split(".")[1]
+        padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded))
+    except (IndexError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def leaked_service_role_key(candidates: list[str]) -> dict | None:
+    """The decoded payload of a genuine Supabase service_role token -- the admin key, which bypasses every Row
+    Level Security policy -- found in any of the given page/script bodies, or None. Checking `iss` means an
+    unrelated JWT-shaped token from some other service cannot false-positive this."""
+    for text in candidates:
+        for token in JWT_RE.findall(text):
+            payload = decode_jwt_payload(token)
+            if payload and payload.get("role") == "service_role" and payload.get("iss") == "supabase":
+                return payload
+    return None
 
 
 def request_json(url: str, api_key: str, accept: str, timeout: float):
@@ -75,13 +108,36 @@ def public_storage_buckets(base_url: str, api_key: str, timeout: float) -> list[
 
 def inspect_supabase(body: str, cancel=None, links: tuple[str, ...] = ()) -> tuple[list[dict], dict, list[dict]]:
     label = "Supabase exposure"
-    discovered = discover_in_linked_scripts(body, links, discover_project, CONFIG["timeout_seconds"], CONFIG["max_scripts_checked"], CONFIG["max_script_bytes"], CONFIG["priority_script_words"])
+    timeout = CONFIG["timeout_seconds"]
+    script_bodies = fetch_same_host_scripts(links, timeout, CONFIG["max_scripts_checked"], CONFIG["max_script_bytes"], CONFIG["priority_script_words"])
+    candidates = [body, *script_bodies]
+
+    leak_findings = []
+    leaked = leaked_service_role_key(candidates)
+    if leaked:
+        location = f"https://{leaked['ref']}.supabase.co" if leaked.get("ref") else "page or linked script"
+        leak_findings.append(finding(
+            "supabase",
+            "Supabase service_role key is exposed in client-side code",
+            "critical",
+            location,
+            "A JSON Web Token on this page or one of its linked scripts decodes to role=\"service_role\" with iss=\"supabase\": this is Supabase's admin key, which bypasses every Row Level Security policy on every table and every Storage bucket, public or private. The key's value itself is not included in this report.",
+            "Rotate this key immediately in Supabase (Project Settings -> API), find where it is referenced in the application (an environment variable that gets bundled into client code -- such as one prefixed NEXT_PUBLIC_ in Next.js -- is the common cause), move it to a server-only environment variable, redeploy, then rescan to confirm it no longer appears client-side.",
+            "supabase:service-role-key-exposed",
+            "observed",
+        ))
+
+    discovered = None
+    for candidate in candidates:
+        discovered = discover_project(candidate)
+        if discovered:
+            break
     if not discovered:
-        return [], {"id": "supabase", "label": label, "state": "skipped", "summary": "No Supabase project was found on the page"}, [
+        summary = "No Supabase project was found on the page" if not leak_findings else "A leaked service_role key was found; no project URL was found to test table or bucket exposure"
+        return leak_findings, {"id": "supabase", "label": label, "state": "skipped" if not leak_findings else "partial", "summary": summary}, [
             gap("supabase_not_detected", f"No Supabase project URL and key were found on the page or its first {CONFIG['max_scripts_checked']} linked script(s), so table-level exposure was not tested.", "This check only runs against a Supabase project discovered in the page's own HTML or linked JavaScript; it does not apply if the site does not call Supabase from the browser.", "supabase")
         ]
     base_url, api_key = discovered
-    timeout = CONFIG["timeout_seconds"]
     tables, schema_readable = candidate_tables(base_url, api_key, timeout)
     exposed, checked, interrupted = [], 0, False
     for table in tables:
@@ -92,7 +148,7 @@ def inspect_supabase(body: str, cancel=None, links: tuple[str, ...] = ()) -> tup
         status, rows = request_json(f"{base_url}/rest/v1/{table}?select=*&limit=1", api_key, "application/json", timeout)
         if status == 200 and isinstance(rows, list) and rows and isinstance(rows[0], dict):
             exposed.append({"table": table, "columns": sorted(rows[0].keys())})
-    found = []
+    found = list(leak_findings)
     for item in exposed:
         sensitive = any(word in item["table"].lower() for word in CONFIG["sensitive_table_words"])
         found.append(finding(
