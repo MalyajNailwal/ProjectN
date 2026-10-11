@@ -1,11 +1,14 @@
 # Validation status
 
-Last updated 2026-10-10. Every CI result below starts from a fresh repository checkout on a GitHub-hosted runner and does not reuse scanner sources, binaries, or runtimes from the developer's Mac. Runner images: `macos-26-arm64` and `windows-2025-vs2026`.
+Last updated 2026-10-11. Every CI result below starts from a fresh repository checkout on a GitHub-hosted runner and does not reuse scanner sources, binaries, or runtimes from the developer's Mac. Runner images: `macos-26-arm64` and `windows-2025-vs2026`.
+
+The per-capability tables below were last fully rebuilt for the original 12-capability scan; the summary row directly below links the latest run covering everything added since (infrastructure/stack fingerprinting, Supabase and Firebase exposure, GraphQL introspection, signup rate limiting, dependency name verification, port-depth presets). Each of those was additionally verified end-to-end against a local fake server or a real locally-served fixture at the commit that introduced it; see that commit's message in `git log` for what was specifically checked.
 
 ## Summary
 
 | Check | macOS | Windows |
 | --- | --- | --- |
+| Full scan requiring all current capabilities (12 external scanners + 10 built-in checks, ~20 stages) with the SQLite WAL-mode and poll-resilience fixes in place | Passed locally, 20 stages, 248 findings | Passed in [native CI](https://github.com/MalyajNailwal/ProjectN/actions/runs/38116408113) |
 | Fresh clone: app and dashboard bootstrap, 47 Python tests, API and dashboard startup, bundled-site scan with a real WhatWeb stage | Passed in [native CI](https://github.com/MalyajNailwal/ProjectN/actions/runs/38025107938) | Passed in [native CI](https://github.com/MalyajNailwal/ProjectN/actions/runs/38025107938) |
 | Fresh clone: real-browser dashboard check. Playwright and Chromium installed automatically, scan launched from the form, live progress, step list and Stop control, report and Coverage pages, no console errors | Passed in native CI | Passed in native CI |
 | Fresh clone: each page and open finding has a URL; browser Back closes a finding and Back/Forward stay inside the dashboard | Passed in native CI | Passed in native CI |

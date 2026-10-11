@@ -91,6 +91,23 @@ On Windows, ProjectN uses the official Nmap runtime and keeps the Nmap source cl
 | Secret detection | Gitleaks (built from source) | Local folder or GitHub repository |
 | Dependency vulnerabilities | OSV-Scanner (built from source) | Local folder or GitHub repository |
 
+These 10 need no extra install; they are pure-Python checks built into the app itself and run as part of every applicable scan:
+
+| Capability | Runs when |
+| --- | --- |
+| HTTP surface (headers, links, forms) | Every website scan |
+| TLS certificate and connection | Every website scan over HTTPS |
+| TLS protocol and cipher configuration | Full |
+| Infrastructure and stack (hosting/CDN, backend-as-a-service, frontend framework) | Every website scan |
+| Supabase exposure (tables and storage buckets readable without authentication) | Full, if a Supabase project is found on the page |
+| Firebase database exposure | Full, if a Firebase project is found on the page |
+| GraphQL introspection | Full |
+| Signup rate limiting | Full, if the browser stage found a signup-shaped form |
+| Dependency name verification (hallucinated/unpublished package names) | Local folder or GitHub repository |
+| OpenAPI contract comparison | When an OpenAPI file is supplied |
+
+The Supabase, Firebase, GraphQL, and signup checks make a small, bounded number of read-only requests against the project/target they already discovered; see [docs/scan-architecture.md](docs/scan-architecture.md) for what evidence each one keeps and what it never stores.
+
 Exact verification results for each platform are in [docs/validation.md](docs/validation.md).
 
 ## Using the app
