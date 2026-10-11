@@ -1,5 +1,8 @@
 {
   "timeout_seconds": 8,
   "max_response_bytes": 65536,
+  "max_scripts_checked": 5,
+  "max_script_bytes": 3000000,
+  "priority_script_words": ["page", "layout", "main", "index", "app", "client", "bundle"],
   "sensitive_key_words": ["user", "account", "customer", "payment", "admin", "token", "key", "wallet", "session", "password", "secret", "credential", "email"]
 }

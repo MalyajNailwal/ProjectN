@@ -120,6 +120,35 @@ class SupabaseProbeTests(unittest.TestCase):
         self.assertIn("avatars", found[0]["title"])
         self.assertEqual(stage["details"]["public_buckets"], ["avatars"])
 
+    def test_project_found_only_in_a_linked_script_is_still_discovered(self):
+        key = fake_jwt()
+        script = f"createClient('https://abcdefghijklmnopqrst.supabase.co', '{key}')".encode()
+
+        class ScriptPage(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/javascript")
+                self.send_header("Content-Length", str(len(script)))
+                self.end_headers()
+                self.wfile.write(script)
+
+        script_server = ThreadingHTTPServer(("127.0.0.1", 0), ScriptPage)
+        threading.Thread(target=script_server.serve_forever, daemon=True).start()
+        self.addCleanup(script_server.shutdown)
+        self.addCleanup(script_server.server_close)
+        script_url = f"http://127.0.0.1:{script_server.server_port}/chunk.js"
+
+        # The real discover_project regex requires a *.supabase.co host, which a local test server can't be;
+        # request_json is patched so the probe's own follow-up calls (table/bucket checks) stay local instead
+        # of trying to reach that fake host for real -- discovery itself, the thing under test, is not mocked.
+        with patch("app.supabase_probe.request_json", return_value=(None, None)):
+            found, stage, issues = inspect_supabase("<html>no supabase here</html>", links=[script_url])
+        self.assertEqual(stage["details"]["project_url"], "https://abcdefghijklmnopqrst.supabase.co")
+        self.assertNotEqual(stage["state"], "skipped")
+
     def test_cancel_stops_early_and_reports_partial(self):
         base_url = self.run_server(exposed_tables=set(), schema={"users": {}})
         cancel = threading.Event()

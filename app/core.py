@@ -309,6 +309,31 @@ def finding(scanner: str, title: str, severity: str, location: str, evidence: st
     return {"id": str(uuid.uuid4()), "scanner": scanner, "title": title, "severity": severity.lower(), "location": location, "evidence": evidence[:1000], "remediation": remediation, "rule": rule, "confidence": confidence, "verification": "Apply the fix, then rerun this scan against the same target and check."}
 
 
+def discover_in_linked_scripts(body: str, links: list[str], find, timeout: float, max_scripts: int, max_bytes: int, priority_words: list[str] = ()):
+    """Try `find` (a probe's own single-body discovery function) against the page body first, then against up to
+    `max_scripts` same-host .js URLs the surface stage already discovered -- scripts whose name matches a bundler
+    convention in `priority_words` (such as "page" or "layout") checked first, since frameworks like Next.js and
+    Vite inline backend URLs and keys into a bundled script rather than server-rendered HTML, and a modern app can
+    ship dozens of chunks. Stops at the first match; never fetches more than `max_scripts`."""
+    found = find(body)
+    if found:
+        return found
+    scripts = [link for link in links if link.endswith(".js")]
+    # Match against the URL's path only -- the host itself (such as "...vercel.app") can otherwise contain
+    # a priority word and make every script tie, silently turning this into a no-op reorder.
+    scripts.sort(key=lambda url: not any(word in urlparse(url).path.lower() for word in priority_words))
+    for script_url in scripts[:max_scripts]:
+        try:
+            with urllib.request.urlopen(urllib.request.Request(script_url), timeout=timeout) as response:
+                script_body = response.read(max_bytes + 1).decode("utf-8", "replace")
+        except (OSError, ValueError):
+            continue
+        found = find(script_body)
+        if found:
+            return found
+    return None
+
+
 def port_in_ranges(port: int, ranges: list[str]) -> bool:
     for group in ranges:
         for segment in group.split(","):
@@ -684,6 +709,7 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
                 found, stage, issues, surface_body = inspect_website(url, host)
                 stage.update(source_revision=builtin_revision("app/web_probe.py", "config/web_probe.json"), rules_dirty=False)
                 surface_headers = stage.get("details", {}).get("headers", {})
+                surface_links = stage.get("details", {}).get("links", [])
                 record(found, stage, issues)
                 begin("tls", "Inspecting TLS connection")
                 found, stage, issues = inspect_tls(url, host)
@@ -693,11 +719,11 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
                     begin("tls_config", "Enumerating TLS protocols and cipher suites")
                     record(*inspect_tls_config(url, host, cancel))
                     begin("supabase", "Testing Supabase table and storage exposure")
-                    found, stage, issues = inspect_supabase(surface_body, cancel)
+                    found, stage, issues = inspect_supabase(surface_body, cancel, links=surface_links)
                     stage.update(source_revision=builtin_revision("app/supabase_probe.py", "config/supabase_probe.json"), rules_dirty=False)
                     record(found, stage, issues)
                     begin("firebase", "Testing Firebase database exposure")
-                    found, stage, issues = inspect_firebase(surface_body, cancel)
+                    found, stage, issues = inspect_firebase(surface_body, cancel, links=surface_links)
                     stage.update(source_revision=builtin_revision("app/firebase_probe.py", "config/firebase_probe.json"), rules_dirty=False)
                     record(found, stage, issues)
                     begin("graphql", "Testing GraphQL introspection")

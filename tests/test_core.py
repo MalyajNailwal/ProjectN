@@ -1,11 +1,13 @@
 import json
 import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.core import compare_reports, execute_scan, full_scan_options, parse_output, port_in_ranges, response_signal_gaps, scan_one, validate_oob_server, validate_repo_url, validate_target_url
+from app.core import compare_reports, discover_in_linked_scripts, execute_scan, full_scan_options, parse_output, port_in_ranges, response_signal_gaps, scan_one, validate_oob_server, validate_repo_url, validate_target_url
 
 
 class TargetValidationTests(unittest.TestCase):
@@ -192,6 +194,63 @@ class OutputTests(unittest.TestCase):
         ranges = ["80,443,8000-8009,8443"]
         self.assertTrue(port_in_ranges(8004, ranges))
         self.assertFalse(port_in_ranges(8765, ranges))
+
+
+class DiscoverInLinkedScriptsTests(unittest.TestCase):
+    """A Next.js/Vite-style app often inlines a backend URL or key into a bundled script rather than the
+    server-rendered HTML; this is what lets a Supabase/Firebase probe find it anyway, without an unbounded
+    or unscoped search."""
+
+    def serve(self, bodies: dict[str, str]) -> tuple[str, list[str]]:
+        requested: list[str] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                requested.append(self.path)
+                payload = bodies.get(self.path, "").encode()
+                self.send_response(200 if self.path in bodies else 404)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        self.addCleanup(server.server_close)
+        return f"http://127.0.0.1:{server.server_port}", requested
+
+    @staticmethod
+    def find_marker(body: str) -> str | None:
+        return "found" if "marker" in body else None
+
+    def test_root_body_match_short_circuits_without_fetching_any_script(self):
+        base_url, requested = self.serve({})
+        result = discover_in_linked_scripts("has marker here", [f"{base_url}/a.js"], self.find_marker, timeout=2, max_scripts=3, max_bytes=1000)
+        self.assertEqual(result, "found")
+        self.assertEqual(requested, [])
+
+    def test_match_found_only_in_a_linked_script(self):
+        base_url, requested = self.serve({"/a.js": "clean", "/b.js": "has marker here"})
+        result = discover_in_linked_scripts("plain page", [f"{base_url}/a.js", f"{base_url}/b.js"], self.find_marker, timeout=2, max_scripts=5, max_bytes=1000)
+        self.assertEqual(result, "found")
+        self.assertEqual(requested, ["/a.js", "/b.js"])
+
+    def test_priority_words_are_checked_before_the_rest_within_the_bound(self):
+        base_url, requested = self.serve({"/a-vendor.js": "clean", "/z-page.js": "has marker here"})
+        # /a-vendor.js sorts first alphabetically and would be the only one tried under max_scripts=1,
+        # unless the "page" priority word promotes /z-page.js ahead of it.
+        result = discover_in_linked_scripts("plain page", [f"{base_url}/a-vendor.js", f"{base_url}/z-page.js"], self.find_marker, timeout=2, max_scripts=1, max_bytes=1000, priority_words=["page"])
+        self.assertEqual(result, "found")
+        self.assertEqual(requested, ["/z-page.js"])
+
+    def test_bound_is_respected_even_when_the_match_is_just_outside_it(self):
+        base_url, requested = self.serve({"/a.js": "clean", "/b.js": "clean", "/c.js": "has marker here"})
+        result = discover_in_linked_scripts("plain page", [f"{base_url}/a.js", f"{base_url}/b.js", f"{base_url}/c.js"], self.find_marker, timeout=2, max_scripts=2, max_bytes=1000)
+        self.assertIsNone(result)
+        self.assertEqual(requested, ["/a.js", "/b.js"])
 
 
 if __name__ == "__main__":

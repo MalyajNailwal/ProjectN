@@ -2,10 +2,13 @@
 
 This is an active check: it only runs in Full scope, where execute_scan already requires explicit scan-time
 authorization before anything starts. It only queries the Supabase project discovered on the target's own
-page (never an arbitrary URL), tries that project's own PostgREST schema first, and otherwise tries a short,
-fixed list of common table-name guesses -- never an unbounded or growing search. It never stores actual row
-values in the report: only the table name, its column names, and the fact that at least one row came back.
-Storage buckets are checked with a single metadata-only request (no file listing or download).
+page or one of its same-host JavaScript bundles (never an arbitrary URL) -- frameworks such as Next.js and
+Vite inline the project URL and key into a bundled script rather than server-rendered HTML, so the page body
+alone is not enough on most modern single-page apps. It tries that project's own PostgREST schema first, and
+otherwise tries a short, fixed list of common table-name guesses -- never an unbounded or growing search. It
+never stores actual row values in the report: only the table name, its column names, and the fact that at
+least one row came back. Storage buckets are checked with a single metadata-only request (no file listing or
+download).
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from app.core import finding, gap
+from app.core import discover_in_linked_scripts, finding, gap
 
 CONFIG = json.loads((Path(__file__).resolve().parent.parent / "config" / "supabase_probe.json").read_text(encoding="utf-8"))
 PROJECT_RE = re.compile(r"https://([a-z0-9]{20})\.supabase\.co")
@@ -70,12 +73,12 @@ def public_storage_buckets(base_url: str, api_key: str, timeout: float) -> list[
     return [item["name"] for item in buckets if isinstance(item, dict) and item.get("public") is True and isinstance(item.get("name"), str)]
 
 
-def inspect_supabase(body: str, cancel=None) -> tuple[list[dict], dict, list[dict]]:
+def inspect_supabase(body: str, cancel=None, links: tuple[str, ...] = ()) -> tuple[list[dict], dict, list[dict]]:
     label = "Supabase exposure"
-    discovered = discover_project(body)
+    discovered = discover_in_linked_scripts(body, links, discover_project, CONFIG["timeout_seconds"], CONFIG["max_scripts_checked"], CONFIG["max_script_bytes"], CONFIG["priority_script_words"])
     if not discovered:
         return [], {"id": "supabase", "label": label, "state": "skipped", "summary": "No Supabase project was found on the page"}, [
-            gap("supabase_not_detected", "No Supabase project URL and key were found on the page, so table-level exposure was not tested.", "This check only runs against a Supabase project discovered in the page's own HTML; it does not apply if the site does not call Supabase from the browser.", "supabase")
+            gap("supabase_not_detected", f"No Supabase project URL and key were found on the page or its first {CONFIG['max_scripts_checked']} linked script(s), so table-level exposure was not tested.", "This check only runs against a Supabase project discovered in the page's own HTML or linked JavaScript; it does not apply if the site does not call Supabase from the browser.", "supabase")
         ]
     base_url, api_key = discovered
     timeout = CONFIG["timeout_seconds"]

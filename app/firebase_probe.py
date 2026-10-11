@@ -2,8 +2,11 @@
 
 This is an active check: it only runs in Full scope, where execute_scan already requires explicit scan-time
 authorization before anything starts. It only queries the Firebase project discovered on the target's own
-page (never an arbitrary URL), and makes a single request using Firebase's own `shallow=true` option, which
-returns only top-level key names (true/false per key), never the actual nested values underneath them.
+page or one of its same-host JavaScript bundles (never an arbitrary URL) -- frameworks such as Next.js and
+Vite inline the project's database URL into a bundled script rather than server-rendered HTML, so the page
+body alone is not enough on most modern single-page apps. It makes a single request using Firebase's own
+`shallow=true` option, which returns only top-level key names (true/false per key), never the actual nested
+values underneath them.
 """
 
 from __future__ import annotations
@@ -14,7 +17,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from app.core import finding, gap
+from app.core import discover_in_linked_scripts, finding, gap
 
 CONFIG = json.loads((Path(__file__).resolve().parent.parent / "config" / "firebase_probe.json").read_text(encoding="utf-8"))
 PROJECT_RE = re.compile(r"([a-z0-9][a-z0-9-]{3,30})\.(?:firebaseio\.com|firebaseapp\.com)")
@@ -47,12 +50,12 @@ def request_json(url: str, timeout: float):
         return status, None
 
 
-def inspect_firebase(body: str, cancel=None) -> tuple[list[dict], dict, list[dict]]:
+def inspect_firebase(body: str, cancel=None, links: tuple[str, ...] = ()) -> tuple[list[dict], dict, list[dict]]:
     label = "Firebase database exposure"
-    project_id = discover_project(body)
+    project_id = discover_in_linked_scripts(body, links, discover_project, CONFIG["timeout_seconds"], CONFIG["max_scripts_checked"], CONFIG["max_script_bytes"], CONFIG["priority_script_words"])
     if not project_id:
         return [], {"id": "firebase", "label": label, "state": "skipped", "summary": "No Firebase project was found on the page"}, [
-            gap("firebase_not_detected", "No Firebase project was found on the page, so database exposure was not tested.", "This check only runs against a Firebase project discovered in the page's own HTML; it does not apply if the site does not use Firebase.", "firebase")
+            gap("firebase_not_detected", f"No Firebase project was found on the page or its first {CONFIG['max_scripts_checked']} linked script(s), so database exposure was not tested.", "This check only runs against a Firebase project discovered in the page's own HTML or linked JavaScript; it does not apply if the site does not use Firebase.", "firebase")
         ]
     if cancel is not None and cancel.is_set():
         return [], {"id": "firebase", "label": label, "state": "partial", "summary": "Stopped before the database could be checked", "details": {"project_id": project_id}}, [

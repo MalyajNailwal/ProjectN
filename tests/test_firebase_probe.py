@@ -70,6 +70,32 @@ class FirebaseProbeTests(unittest.TestCase):
         self.assertEqual(found, [])
         self.assertFalse(stage["details"]["exposed"])
 
+    def test_project_found_only_in_a_linked_script_is_still_discovered(self):
+        script = b"<script>databaseURL:'https://fixture-proj.firebaseio.com'</script>"
+
+        class ScriptPage(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/javascript")
+                self.send_header("Content-Length", str(len(script)))
+                self.end_headers()
+                self.wfile.write(script)
+
+        script_server = ThreadingHTTPServer(("127.0.0.1", 0), ScriptPage)
+        threading.Thread(target=script_server.serve_forever, daemon=True).start()
+        self.addCleanup(script_server.shutdown)
+        self.addCleanup(script_server.server_close)
+        script_url = f"http://127.0.0.1:{script_server.server_port}/chunk.js"
+
+        base_url = self.run_server(shallow_data=None)
+        with patch("app.firebase_probe.request_json", side_effect=lambda url, timeout: request_json(f"{base_url}/.json", timeout)):
+            found, stage, issues = inspect_firebase("<html>no firebase here</html>", links=[script_url])
+        self.assertEqual(stage["details"]["project_id"], "fixture-proj")
+        self.assertNotEqual(stage["state"], "skipped")
+
     def test_cancel_before_running_reports_partial(self):
         cancel = threading.Event()
         cancel.set()
