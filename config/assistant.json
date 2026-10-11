@@ -6,5 +6,5 @@
   "require_zero_retention": true,
   "timeout_seconds": 90,
   "max_output_tokens": 600,
-  "allowed_scanners": ["surface", "tls", "tls_config", "dependencies", "performance", "journeys", "templates", "application", "accessibility", "infra", "slopsquat", "supabase", "firebase", "graphql"]
+  "allowed_scanners": ["surface", "tls", "tls_config", "dependencies", "performance", "journeys", "templates", "application", "accessibility", "infra", "slopsquat", "supabase", "firebase", "graphql", "signup_limits"]
 }

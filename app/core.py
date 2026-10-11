@@ -579,6 +579,7 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
     from app.firebase_probe import inspect_firebase
     from app.graphql_probe import inspect_graphql
     from app.infra_probe import inspect_infrastructure
+    from app.signup_probe import inspect_signup_rate_limit
     from app.slopsquat_probe import inspect_slopsquat
     from app.supabase_probe import inspect_supabase
     from app.web_probe import inspect_website
@@ -624,6 +625,8 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
             steps.append({"id": "graphql", "label": "GraphQL introspection"})
         steps.append({"id": "infra", "label": "Infrastructure and stack"})
     steps += [{"id": spec["id"], "label": spec["label"]} for spec in selected]
+    if url and profile == "full":
+        steps.append({"id": "signup_limits", "label": "Signup rate limiting"})
     if repo_url or local_path:
         steps.append({"id": "slopsquat", "label": "Dependency name verification"})
     if api_spec_file:
@@ -709,6 +712,13 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
             for spec in runnable:
                 begin(spec["id"], f"Running {spec['label']}")
                 record(*scan_one(spec, values, work, cancel))
+            if url and profile == "full":
+                browser_stage = next((item for item in stages if item["id"] == "browser"), None)
+                forms = browser_stage["details"].get("forms", []) if browser_stage and browser_stage.get("details") else []
+                begin("signup_limits", "Testing signup form rate limiting")
+                found, stage, issues = inspect_signup_rate_limit(forms, cancel)
+                stage.update(source_revision=builtin_revision("app/signup_probe.py", "config/signup_probe.json"), rules_dirty=False)
+                record(found, stage, issues)
             if repo:
                 begin("slopsquat", "Verifying dependency names against their registry")
                 found, stage, issues = inspect_slopsquat(repo, cancel)

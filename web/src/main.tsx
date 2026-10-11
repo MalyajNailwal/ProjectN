@@ -488,7 +488,7 @@ const assetsView=<>
           <Fact icon={Hash} label="Rule"><code>{selected.rule||'—'}</code></Fact>
           {findingHistory&&findingHistory.seen_in_scans>1&&findingHistory.first_seen&&<Fact icon={History} label="First observed">{formatTime(findingHistory.first_seen)} · seen in {findingHistory.seen_in_scans} scans on this target</Fact>}
         </dl>
-        {['surface','tls','tls_config','dependencies','performance','journeys','templates','application','accessibility','infra','slopsquat','supabase','firebase','graphql'].includes(selected.scanner)&&<section className="ai-draft">
+        {['surface','tls','tls_config','dependencies','performance','journeys','templates','application','accessibility','infra','slopsquat','supabase','firebase','graphql','signup_limits'].includes(selected.scanner)&&<section className="ai-draft">
           <h3><Sparkles size={15} aria-hidden="true"/>Optional AI draft</h3>
           {assistantStatus?.external&&<label className="consent"><input type="checkbox" checked={allowExternal} onChange={e=>setAllowExternal(e.target.checked)}/><span>Send this selected finding to OpenRouter for an AI draft.</span></label>}
           <button type="button" className="btn secondary" disabled={draftBusy||!assistantStatus?.configured||(!!assistantStatus?.external&&!allowExternal)} onClick={()=>requestDraft(selected)}>{draftBusy?<><LoaderCircle size={14} className="spin" aria-hidden="true"/>Working…</>:<><Sparkles size={14} aria-hidden="true"/>Draft with {assistantStatus?.provider||'configured provider'}</>}</button>
