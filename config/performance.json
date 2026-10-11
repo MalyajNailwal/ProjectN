@@ -1,5 +1,7 @@
 {
   "categories": ["performance", "best-practices", "seo"],
   "minimum_audit_score": 0.9,
-  "max_findings": 100
+  "max_findings": 100,
+  "transient_retry_attempts": 1,
+  "transient_retry_wait_seconds": 5
 }
