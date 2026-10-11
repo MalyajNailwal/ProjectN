@@ -46,6 +46,11 @@ def connection():
     db = sqlite3.connect(DB, timeout=30)
     try:
         db.row_factory = sqlite3.Row
+        # WAL mode lets a reader (a status poll) proceed without waiting on a concurrent writer (a running
+        # scan's own progress updates) instead of blocking behind SQLite's default lock; this is what was
+        # actually causing a status poll to occasionally outlast its own client-side timeout under load.
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=NORMAL")
         db.execute("CREATE TABLE IF NOT EXISTS scans (id TEXT PRIMARY KEY, created REAL NOT NULL, status TEXT NOT NULL, progress TEXT NOT NULL, target TEXT NOT NULL, result TEXT, error TEXT)")
         columns = {row[1] for row in db.execute("PRAGMA table_info(scans)")}
         if "steps" not in columns:
