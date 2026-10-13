@@ -49,6 +49,7 @@ class TargetValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, patch("app.core.readiness", return_value=ready), patch("app.core.run_tool", side_effect=invalid_rules):
             _, stage, gaps = scan_one(spec, {"profile": "standard"}, Path(temp))
         self.assertEqual(stage["state"], "failed")
+        self.assertEqual(stage["summary"], "Scanner failed before producing observations")
         self.assertEqual(stage["details"]["diagnostic"], "invalid configuration file found\napi_key=[redacted]")
         self.assertIn("scanner_error", {item["code"] for item in gaps})
 

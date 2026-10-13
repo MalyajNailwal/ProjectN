@@ -23,6 +23,7 @@ from urllib.parse import urlparse, urlunparse
 ROOT = Path(__file__).resolve().parent.parent
 DATA = Path(os.getenv("PROJECTN_DATA_DIR") or ROOT / "data")
 CONFIG = json.loads((ROOT / "config" / "scanners.json").read_text(encoding="utf-8"))
+BROWSER_RUNTIME = ROOT / CONFIG["browser_runtime_dir"]
 COVERAGE = json.loads((ROOT / "config" / "coverage.json").read_text(encoding="utf-8"))
 FULL_DEFAULTS = json.loads((ROOT / "config" / "full_scan.json").read_text(encoding="utf-8"))
 APPLICATION_CONFIG = json.loads((ROOT / "config" / "application_scan.json").read_text(encoding="utf-8"))
@@ -171,6 +172,26 @@ def executable_for(spec: dict) -> str | None:
     return str(candidate) if candidate.is_file() else None
 
 
+def browser_runtime_issue(python: Path) -> str | None:
+    """Check both Chromium executables and launch the one used by rendered scans."""
+    probe = (
+        "from pathlib import Path\n"
+        "from playwright.sync_api import sync_playwright\n"
+        "with sync_playwright() as driver:\n"
+        "    if not Path(driver.chromium.executable_path).is_file():\n"
+        "        raise FileNotFoundError('Chromium executable is missing')\n"
+        "    browser = driver.chromium.launch(headless=True)\n"
+        "    browser.close()\n"
+    )
+    try:
+        check = subprocess.run([str(python), "-c", probe], capture_output=True, text=True, timeout=20, shell=False, env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": str(BROWSER_RUNTIME)})
+    except (OSError, subprocess.TimeoutExpired):
+        return "Chromium did not launch during the local readiness check"
+    if check.returncode:
+        return "Chromium is missing or cannot launch in the local browser environment"
+    return None
+
+
 def readiness(spec: dict) -> dict:
     executable = executable_for(spec)
     source = ROOT / spec["source"]
@@ -221,6 +242,11 @@ def readiness(spec: dict) -> dict:
             header = script.readline()
         match = re.search(r"axe v([0-9.]+)", header)
         runtime_version = match.group(1) if match else None
+    if spec["id"] in {"browser", "journeys", "accessibility", "performance"}:
+        browser_python = ROOT / "tools/venvs/browser-journeys" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        if browser_python.is_file():
+            if issue := browser_runtime_issue(browser_python):
+                missing.append(issue)
     runtime = None
     if spec["id"] == "performance":
         package = ROOT / "tools/venvs/performance/node_modules/lighthouse"
@@ -535,7 +561,7 @@ def scan_one(spec: dict, values: dict, work: Path, cancel=None) -> tuple[list[di
     timeout = spec.get("full_timeout", spec["timeout"]) if full else spec["timeout"]
     output_spec = {**spec, "inventory_limit": values.get("inventory_limit", FULL_DEFAULTS["inventory_limit"])} if full else spec
     argv = [ready["executable"], *(part.format_map(substitutions) for part in args_template)]
-    scanner_env = {**os.environ, **spec.get("env", {}), **({"NMAPDIR": str(ROOT / spec["source"])} if spec["id"] == "ports" else {})}
+    scanner_env = {**os.environ, **spec.get("env", {}), **({"NMAPDIR": str(ROOT / spec["source"])} if spec["id"] == "ports" else {}), **({"PLAYWRIGHT_BROWSERS_PATH": str(BROWSER_RUNTIME)} if spec["id"] in {"browser", "journeys", "accessibility", "performance"} else {})}
     try:
         result = run_tool(argv, timeout, cancel, cwd=ROOT, env=scanner_env)
         findings, details = parse_output(output_spec, output)
@@ -595,6 +621,8 @@ def scan_one(spec: dict, values: dict, work: Path, cancel=None) -> tuple[list[di
         if issues and state == "completed":
             state = "skipped" if details.get("files_scanned") == 0 else "partial"
         summary = f"{details.get('state_counts', {}).get('open', 0)} open of {details.get('scanned_count', 0)} scanned" if spec["id"] == "ports" else f"{details.get('observed', 0)} observed" + (f" in {details['files_scanned']} file{'' if details['files_scanned'] == 1 else 's'}" if "files_scanned" in details else "") + (f" ({details['packages']} packages)" if spec["id"] == "dependencies" else "")
+        if state == "failed" and not details.get("observed"):
+            summary = "Scanner failed before producing observations"
         return findings, {"id": spec["id"], "label": spec["label"], "state": state, "summary": summary, "details": details, "exit_code": result.returncode, "source_revision": ready["source_revision"], "source_version": ready["source_version"], "runtime_version": ready["runtime_version"], "runtime_origin": ready["runtime_origin"], "rules_revision": ready["rules_revision"], "rules_dirty": ready["rules_dirty"], "profile": values.get("profile", "standard")}, issues
     except subprocess.TimeoutExpired:
         return [], {"id": spec["id"], "label": spec["label"], "state": "failed", "summary": "Time limit reached"}, [gap("timeout", f"{spec['label']} reached its {timeout} second limit.", "Narrow the scope or increase the scanner timeout in configuration, then retry.", spec["id"])]

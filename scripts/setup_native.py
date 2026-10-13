@@ -20,6 +20,7 @@ CONFIG = json.loads((ROOT / "config/scanners.json").read_text(encoding="utf-8"))
 SCANNERS = CONFIG["scanners"]
 LOCK = json.loads((ROOT / "config/source-lock.json").read_text(encoding="utf-8"))["repositories"]
 CACHE = ROOT / "tools/.cache"
+BROWSER_RUNTIME = ROOT / CONFIG["browser_runtime_dir"]
 # Build downloads go to tools/.cache, never the user's own caches, and are deleted after each component builds.
 BUILD_CACHE_ENV = {"GOMODCACHE": "go-mod", "GOCACHE": "go-build", "GRADLE_USER_HOME": "gradle", "UV_CACHE_DIR": "uv", "npm_config_cache": "npm"}
 # Approximate peak disk use per component in GB (sources, runtime, and temporary build downloads), measured on macOS.
@@ -27,10 +28,10 @@ DISK_GB = {"go": 3.0, "callback": 0.8, "semgrep": 1.2, "browser": 1.0, "applicat
 APPLICATION = json.loads((ROOT / "config/application_scan.json").read_text(encoding="utf-8"))
 
 
-def run(*command: str, cwd: Path = ROOT) -> None:
+def run(*command: str, cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
     print("Running:", " ".join(command), flush=True)
     executable = shutil.which(command[0]) or command[0]
-    subprocess.run([executable, *command[1:]], cwd=cwd, check=True, shell=False)
+    subprocess.run([executable, *command[1:]], cwd=cwd, check=True, shell=False, env=env)
 
 
 def component_sources(name: str) -> list[str]:
@@ -96,7 +97,7 @@ def install_browser() -> None:
     version = (ROOT / "tools/web/browser-journeys/python-bindings/DRIVER_VERSION").read_text(encoding="utf-8").strip()
     run(*uv(), "venv", "--allow-existing", str(environment_python("browser-journeys").parents[1]))
     run(*uv(), "pip", "install", "--python", str(environment_python("browser-journeys")), f"playwright=={version}")
-    run(str(environment_command("browser-journeys", "playwright")), "install", "chromium")
+    run(str(environment_command("browser-journeys", "playwright")), "install", "chromium", env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": str(BROWSER_RUNTIME)})
 
 
 def build_application() -> None:
