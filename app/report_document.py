@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import zipfile
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from xml.sax.saxutils import escape
@@ -37,7 +37,14 @@ def revision(value: object) -> str:
 
 def date(value: object) -> str:
     try:
-        return datetime.fromtimestamp(float(value)).astimezone().strftime("%d %B %Y, %H:%M %Z")
+        # Windows C runtimes reject some valid Unix timestamps before 1970.
+        moment = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=float(value))
+        try:
+            moment = moment.astimezone()
+        except (OSError, OverflowError):
+            # An early UTC instant may still be in 1969 in the local timezone.
+            pass
+        return moment.strftime("%d %B %Y, %H:%M %Z")
     except (TypeError, ValueError, OverflowError):
         return "Not recorded"
 

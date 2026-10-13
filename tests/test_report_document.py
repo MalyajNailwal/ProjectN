@@ -9,7 +9,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from app import main
-from app.report_document import blocks_for, make_docx, make_html, safe
+from app.report_document import blocks_for, date, make_docx, make_html, safe
 
 
 def sample():
@@ -28,6 +28,9 @@ def sample():
 
 
 class ReportDocumentTests(unittest.TestCase):
+    def test_early_unix_timestamp_is_supported_on_windows(self):
+        self.assertIn("1970", date(1))
+
     def test_docx_contains_evidence_header_footer_and_no_diagnostic(self):
         blocks, target, scan_id = blocks_for(sample())
         result = make_docx(blocks, target, scan_id)
