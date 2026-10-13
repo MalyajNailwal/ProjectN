@@ -108,6 +108,7 @@ function App(){
   const [retryAuthorized,setRetryAuthorized] = useState(false)
   const [retryBusy,setRetryBusy] = useState(false)
   const [retryError,setRetryError] = useState('')
+  const [retryLimits,setRetryLimits] = useState({portDepth:'standard',portRange:'',browserPageLimit:'',crawlDepth:'',crawlMinutes:''})
   const [selected,setSelected] = useState<Finding|null>(null)
   const [severity,setSeverity] = useState('all')
   const [comparison,setComparison] = useState<Comparison|null>(null)
@@ -124,6 +125,7 @@ function App(){
   const closeButton = useRef<HTMLButtonElement>(null)
   const retryPanel = useRef<HTMLDivElement>(null)
   const active = !!scan && ['queued','running'].includes(scan.status)
+  const retryLimitInvalid = scan?.target.profile==='full' && (retryStepId==='ports' && retryLimits.portDepth==='custom' && !retryLimits.portRange.trim() || (retryStepId==='browser'||retryStepId==='accessibility') && !(Number(retryLimits.browserPageLimit)>0) || retryStepId==='crawler' && (!(Number(retryLimits.crawlDepth)>0)||!(Number(retryLimits.crawlMinutes)>0)))
   const scanRef = useRef(scan)
   scanRef.current = scan
   function go(next:View,options:{scanId?:string|null;finding?:string|null;replace?:boolean}={}){
@@ -242,11 +244,19 @@ function App(){
   const exportButton=report&&scan?<a className="btn secondary" href={`/api/scans/${scan.id}/export`}><Download size={15} aria-hidden="true"/>Export JSON</a>:undefined
   const targetOf=(target:{url?:string|null;repo_url?:string|null;local_path?:string|null})=>target.url||target.repo_url||target.local_path||'Target pending'
 
+  function chooseRetry(stepId:string){
+    if(retryStepId===stepId){setRetryStepId(null);return}
+    const target=scan?.target
+    setRetryLimits({portDepth:target?.port_depth||fullDefaults?.port_depth||'standard',portRange:target?.port_range||'',browserPageLimit:String(target?.browser_page_limit??fullDefaults?.browser_page_limit??''),crawlDepth:String(target?.crawl_depth??fullDefaults?.crawl_depth??''),crawlMinutes:String(target?.crawl_duration_minutes??fullDefaults?.crawl_duration_minutes??'')})
+    setRetryStepId(stepId);setRetryAuthorized(false);setRetryError('')
+  }
+
   async function retryStep(){
     if(!scan||!retryStepId||retryBusy) return
     setRetryBusy(true);setRetryError('')
     try{
-      const result=await jsonFetch<{id:string}>(`/api/scans/${scan.id}/retry`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({step_id:retryStepId,authorized_intrusive:retryAuthorized})})
+      const limits=scan.target.profile==='full'?retryStepId==='ports'?{port_depth:retryLimits.portDepth,port_range:retryLimits.portDepth==='custom'?retryLimits.portRange.trim():null}:retryStepId==='browser'||retryStepId==='accessibility'?{browser_page_limit:Number(retryLimits.browserPageLimit)}:retryStepId==='crawler'?{crawl_depth:Number(retryLimits.crawlDepth),crawl_duration_minutes:Number(retryLimits.crawlMinutes)}:{}:{}
+      const result=await jsonFetch<{id:string}>(`/api/scans/${scan.id}/retry`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({step_id:retryStepId,authorized_intrusive:retryAuthorized,...limits})})
       setScan({id:result.id,created:Date.now()/1000,status:'queued',progress:'Waiting to start',target:scan.target,result:null,error:null})
       setSubmittedScanId(result.id);setRetryStepId(null);setRetryAuthorized(false)
       go('overview',{scanId:result.id})
@@ -372,8 +382,17 @@ function App(){
     {steps.length>0&&<section className="card steps-section">
       <div className="card-head"><h2>{active?'What is happening now':'What ran'}</h2><span className="hint-text">{doneSteps} of {steps.length} finished · #{shortId(scan!.id)}</span></div>
       {report?.retry_of&&<div className="notice info">Selected check retried from scan #{shortId(report.retry_of)}. The earlier report keeps results from checks that were not repeated.</div>}
-      <ol className="step-list">{steps.map(step=>{const seconds=step.started_at?(step.finished_at||now)-step.started_at:null;const canRetry=!active&&['failed','partial','not_run','cancelled'].includes(step.state);return <li key={step.id} className={'step '+step.state}><StateIcon state={step.state}/><span className="step-label"><strong>{step.label}</strong><small>{step.summary||stepWords[step.state]||step.state}</small></span>{canRetry&&<button type="button" className="btn ghost sm" onClick={()=>{setRetryStepId(retryStepId===step.id?null:step.id);setRetryAuthorized(false);setRetryError('')}} aria-label={`Retry ${step.label}`}><RotateCcw size={13} aria-hidden="true"/>Retry</button>}<span className="step-time">{seconds===null?'':elapsed(seconds)}</span></li>})}</ol>
-      {retryStepId&&<div className="retry-panel" ref={retryPanel}><strong>Retry {steps.find(step=>step.id===retryStepId)?.label}</strong><p>This starts a new report for this check. Required preparation steps may also run. The earlier report stays available.</p>{scan?.target.profile==='full'&&!!scan.target.url&&<label className="consent"><input type="checkbox" checked={retryAuthorized} onChange={event=>setRetryAuthorized(event.target.checked)}/><span>I am authorized to run intrusive checks against this website.</span></label>}<div className="head-actions"><button type="button" className="btn ghost sm" onClick={()=>{setRetryStepId(null);setRetryError('')}}>Cancel</button><button type="button" className="btn primary sm" disabled={retryBusy||(scan?.target.profile==='full'&&!!scan.target.url&&!retryAuthorized)} onClick={retryStep}>{retryBusy?'Starting…':'Start retry'}</button></div>{retryError&&<div className="notice error" role="alert">{retryError}</div>}</div>}
+      <ol className="step-list">{steps.map(step=>{const seconds=step.started_at?(step.finished_at||now)-step.started_at:null;const canRetry=!active&&['failed','partial','not_run','cancelled'].includes(step.state);return <li key={step.id} className={'step '+step.state}><StateIcon state={step.state}/><span className="step-label"><strong>{step.label}</strong><small>{step.summary||stepWords[step.state]||step.state}</small></span>{canRetry&&<button type="button" className="btn ghost sm" onClick={()=>chooseRetry(step.id)} aria-label={`Retry ${step.label}`}><RotateCcw size={13} aria-hidden="true"/>Retry</button>}<span className="step-time">{seconds===null?'':elapsed(seconds)}</span></li>})}</ol>
+      {retryStepId&&<div className="retry-panel" ref={retryPanel}>
+        <strong>Retry {steps.find(step=>step.id===retryStepId)?.label}</strong>
+        <p>This starts a new report for this check. Required preparation steps may also run. The earlier report stays available.</p>
+        {scan?.target.profile==='full'&&retryStepId==='ports'&&<div className="retry-fields"><label>Port coverage<select value={retryLimits.portDepth} onChange={event=>setRetryLimits({...retryLimits,portDepth:event.target.value})}><option value="quick">Top 100</option><option value="standard">Top 1000</option><option value="thorough">Top 5000</option><option value="full">All 65535</option><option value="custom">Custom range</option></select></label>{retryLimits.portDepth==='custom'&&<label>TCP ports<input value={retryLimits.portRange} onChange={event=>setRetryLimits({...retryLimits,portRange:event.target.value})} placeholder="80,443,8000-9000"/></label>}</div>}
+        {scan?.target.profile==='full'&&(retryStepId==='browser'||retryStepId==='accessibility')&&<div className="retry-fields"><label>Rendered pages limit<input type="number" min="1" value={retryLimits.browserPageLimit} onChange={event=>setRetryLimits({...retryLimits,browserPageLimit:event.target.value})}/></label></div>}
+        {scan?.target.profile==='full'&&retryStepId==='crawler'&&<div className="retry-fields"><label>Crawl depth<input type="number" min="1" value={retryLimits.crawlDepth} onChange={event=>setRetryLimits({...retryLimits,crawlDepth:event.target.value})}/></label><label>Crawl minutes<input type="number" min="1" value={retryLimits.crawlMinutes} onChange={event=>setRetryLimits({...retryLimits,crawlMinutes:event.target.value})}/></label></div>}
+        {scan?.target.profile==='full'&&!!scan.target.url&&<label className="consent"><input type="checkbox" checked={retryAuthorized} onChange={event=>setRetryAuthorized(event.target.checked)}/><span>I am authorized to run intrusive checks against this website.</span></label>}
+        <div className="head-actions"><button type="button" className="btn ghost sm" onClick={()=>{setRetryStepId(null);setRetryError('')}}>Cancel</button><button type="button" className="btn primary sm" disabled={retryBusy||!!retryLimitInvalid||(scan?.target.profile==='full'&&!!scan.target.url&&!retryAuthorized)} onClick={retryStep}>{retryBusy?'Starting…':'Start retry'}</button></div>
+        {retryError&&<div className="notice error" role="alert">{retryError}</div>}
+      </div>}
     </section>}
     <section className="card history">
       <div className="card-head"><h2><History size={16} aria-hidden="true"/>Recent scans</h2><div className="head-actions"><span className="hint-text">{history.length} stored on this computer</span>{history.some(item=>!['queued','running'].includes(item.status))&&(confirmClear

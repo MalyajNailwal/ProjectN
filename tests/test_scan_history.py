@@ -94,6 +94,18 @@ class ScanHistoryTests(unittest.TestCase):
             main.retry_scan("done-1", main.RetryRequest(step_id="browser", authorized_intrusive=True))
         self.assertEqual(lost_query.exception.status_code, 409)
 
+    def test_retry_can_narrow_full_port_scan_without_changing_other_checks(self):
+        target = {"url": "https://example.test", "profile": "full", "port_depth": "full"}
+        steps = [{"id": "ports", "state": "failed"}]
+        with main.connection() as db:
+            db.execute("UPDATE scans SET target = ?, steps = ? WHERE id = 'done-1'", (json.dumps(target), json.dumps(steps)))
+        with patch.object(main, "queue_scan", return_value={"id": "retry", "status": "queued"}) as queued:
+            main.retry_scan("done-1", main.RetryRequest(step_id="ports", authorized_intrusive=True, port_depth="thorough"))
+        self.assertEqual(queued.call_args.args[0]["port_depth"], "thorough")
+        with self.assertRaises(HTTPException) as invalid:
+            main.retry_scan("done-1", main.RetryRequest(step_id="ports", authorized_intrusive=True, browser_page_limit=100))
+        self.assertEqual(invalid.exception.status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()

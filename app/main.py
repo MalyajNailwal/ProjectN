@@ -101,6 +101,11 @@ class DraftRequest(BaseModel):
 class RetryRequest(BaseModel):
     step_id: str
     authorized_intrusive: bool = False
+    port_depth: str | None = Field(default=None, pattern="^(quick|standard|thorough|full|custom)$")
+    port_range: str | None = Field(default=None, max_length=1024)
+    browser_page_limit: int | None = Field(default=None, ge=1)
+    crawl_depth: int | None = Field(default=None, ge=1)
+    crawl_duration_minutes: int | None = Field(default=None, ge=1)
 
 
 def update_scan(scan_id: str, **fields):
@@ -209,6 +214,20 @@ def retry_scan(scan_id: str, request: RetryRequest):
         raise HTTPException(409, "The original URL query was withheld from history. Start a new scan with the full URL to repeat this check.")
     values = ScanRequest.model_validate(previous["target"]).model_dump()
     values["authorized_intrusive"] = request.authorized_intrusive
+    if request.port_depth is not None or request.port_range is not None:
+        if request.step_id != "ports" or values["profile"] != "full":
+            raise HTTPException(422, "Port limits can only be changed for a Full ports retry.")
+        if request.port_depth is not None:
+            values["port_depth"] = request.port_depth
+            values["port_range"] = request.port_range if request.port_depth == "custom" else None
+        elif request.port_range is not None:
+            raise HTTPException(422, "Choose custom port depth before supplying a range.")
+    for field, stages in (("browser_page_limit", {"browser", "accessibility"}), ("crawl_depth", {"crawler"}), ("crawl_duration_minutes", {"crawler"})):
+        replacement = getattr(request, field)
+        if replacement is not None:
+            if request.step_id not in stages or values["profile"] != "full":
+                raise HTTPException(422, f"{field} cannot be changed for this retry.")
+            values[field] = replacement
     values["retry_of"] = scan_id
     values["retry_step_ids"] = [request.step_id]
     return queue_scan(values)

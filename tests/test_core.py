@@ -196,6 +196,28 @@ class OutputTests(unittest.TestCase):
             self.assertEqual(details["api_endpoints"][0]["url"], "https://example.test/api/users")
             self.assertNotIn("DO-NOT-REPORT", json.dumps(details))
 
+    def test_crawler_keeps_valid_records_when_one_jsonl_line_is_malformed(self):
+        spec = {"id": "crawler", "label": "Site and API discovery", "source": "tools/web/endpoint-crawler/source", "args": ["{output}"], "output": "katana", "timeout": 5}
+        ready = {"ready": True, "executable": "fixture-scanner", "source_revision": "rev", "source_version": None, "runtime_version": None, "runtime_origin": "fixture", "rules_revision": None, "rules_dirty": False, "runtime": None}
+
+        def mixed_output(argv, *_args, **_options):
+            Path(argv[1]).write_text(json.dumps({"request": {"endpoint": "https://example.test/api"}, "response": {"status_code": 200}}) + "\n{broken json\n")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with tempfile.TemporaryDirectory() as temp, patch("app.core.readiness", return_value=ready), patch("app.core.run_tool", side_effect=mixed_output):
+            _, stage, gaps = scan_one(spec, {"profile": "standard"}, Path(temp))
+        self.assertEqual(stage["state"], "partial")
+        self.assertEqual(stage["details"]["observed"], 1)
+        self.assertEqual(stage["details"]["invalid_lines"], 1)
+        self.assertEqual({item["code"] for item in gaps}, {"crawler_output_partial"})
+
+        with tempfile.TemporaryDirectory() as temp:
+            Path(temp, "crawler.json").write_text("{broken json\n")
+            with patch("app.core.readiness", return_value=ready), patch("app.core.run_tool", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")):
+                _, stage, gaps = scan_one(spec, {"profile": "standard"}, Path(temp))
+        self.assertEqual(stage["state"], "failed")
+        self.assertEqual({item["code"] for item in gaps}, {"crawler_output_partial"})
+
     def test_rescan_only_marks_absence_when_same_check_completed(self):
         old = {"findings": [{"fingerprint": "a", "scanner": "surface"}, {"fingerprint": "b", "scanner": "secrets"}], "stages": [{"id": "surface", "state": "completed", "source_revision": "probe1", "rules_dirty": False}, {"id": "secrets", "state": "completed", "source_revision": "rev1", "rules_revision": "rules1", "rules_dirty": False}]}
         new = {"findings": [], "stages": [{"id": "surface", "state": "completed", "source_revision": "probe1", "rules_dirty": False}, {"id": "secrets", "state": "skipped", "source_revision": "rev1", "rules_revision": "rules1", "rules_dirty": False}]}

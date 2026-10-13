@@ -404,7 +404,23 @@ def parse_output(spec: dict, output: Path) -> tuple[list[dict], dict]:
     if not output.is_file() or output.stat().st_size == 0:
         return [], {"observed": 0}
     if kind in {"nuclei", "katana"}:
-        rows = [json.loads(line) for line in output.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
+        rows = []
+        invalid_lines = 0
+        with output.open(encoding="utf-8", errors="replace") as stream:
+            for line in stream:
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    if kind != "katana":
+                        raise
+                    invalid_lines += 1
+                    continue
+                if kind == "katana" and not isinstance(row, dict):
+                    invalid_lines += 1
+                    continue
+                rows.append(row)
         if kind == "katana":
             inventory = {}
             for row in rows:
@@ -413,14 +429,18 @@ def parse_output(spec: dict, output: Path) -> tuple[list[dict], dict]:
                 raw_url = request.get("endpoint") or row.get("url")
                 if not raw_url:
                     continue
+                if not isinstance(raw_url, str):
+                    invalid_lines += 1
+                    continue
                 clean_url = public_url(raw_url)
                 headers = response.get("headers") if isinstance(response.get("headers"), dict) else {}
                 content_type = str(headers.get("content_type", "")).split(";", 1)[0].lower()
-                inventory[(request.get("method", "GET"), clean_url)] = {"method": request.get("method", "GET"), "url": clean_url, "status": response.get("status_code"), "content_type": content_type}
+                method = str(request.get("method") or "GET")
+                inventory[(method, clean_url)] = {"method": method, "url": clean_url, "status": response.get("status_code"), "content_type": content_type}
             entries = sorted(inventory.values(), key=lambda item: (item["url"], item["method"]))
             api_entries = [item for item in entries if item["content_type"] == "application/json" or item["content_type"].endswith("+json")]
             limit = spec.get("inventory_limit", 500)
-            return [], {"observed": len(entries), "status_counts": dict(Counter(str(item["status"]) for item in entries if item["status"])), "urls": sorted({item["url"] for item in entries})[:limit], "api_endpoints": api_entries[:limit], "api_observed": len(api_entries), "inventory_truncated": len(entries) > limit or len(api_entries) > limit}
+            return [], {"observed": len(entries), "invalid_lines": invalid_lines, "status_counts": dict(Counter(str(item["status"]) for item in entries if item["status"])), "urls": sorted({item["url"] for item in entries})[:limit], "api_endpoints": api_entries[:limit], "api_observed": len(api_entries), "inventory_truncated": len(entries) > limit or len(api_entries) > limit}
         found = []
         for row in rows:
             info = row.get("info", {})
@@ -618,6 +638,11 @@ def scan_one(spec: dict, values: dict, work: Path, cancel=None) -> tuple[list[di
             issues.append(gap("performance_findings_truncated", "Some measured Lighthouse opportunities were omitted from the report display.", "Increase max_findings in config/performance.json and rescan.", spec["id"]))
         if details.get("inventory_truncated"):
             issues.append(gap("inventory_truncated", "The discovered endpoint inventory exceeded the report display limit.", "Increase the Full scan inventory limit and rescan.", spec["id"]))
+        if spec["id"] == "crawler" and details.get("invalid_lines"):
+            resolution = "Update or verify the local crawler build and retry this check." if not details.get("observed") else "Review the retained endpoints, then update or verify the local crawler build and retry this check."
+            issues.append(gap("crawler_output_partial", f"{details['invalid_lines']} crawler output line(s) were not valid JSON objects.", resolution, spec["id"]))
+            if not details.get("observed"):
+                state = "failed"
         if issues and state == "completed":
             state = "skipped" if details.get("files_scanned") == 0 else "partial"
         summary = f"{details.get('state_counts', {}).get('open', 0)} open of {details.get('scanned_count', 0)} scanned" if spec["id"] == "ports" else f"{details.get('observed', 0)} observed" + (f" in {details['files_scanned']} file{'' if details['files_scanned'] == 1 else 's'}" if "files_scanned" in details else "") + (f" ({details['packages']} packages)" if spec["id"] == "dependencies" else "")
