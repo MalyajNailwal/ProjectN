@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Activity, ArrowRight, BadgeCheck, Blocks, Boxes, ChevronRight, CircleAlert, CircleStop, Clock3, Cloud, Cpu, Database, Download, FileCode2, FileSearch, Fingerprint, FolderGit2, FolderOpen, Gauge, GitCompareArrows, Globe, Hash, History, KeyRound, LayoutDashboard, ListChecks, LoaderCircle, LockKeyhole, MapPin, Network, OctagonAlert, Radar, Route, ScrollText, Shield, ShieldAlert, ShieldCheck, Sparkles, Trash2, Wrench, X, Zap } from 'lucide-react'
+import { Activity, ArrowRight, BadgeCheck, Blocks, Boxes, ChevronRight, CircleAlert, CircleStop, Clock3, Cloud, Cpu, Database, Download, FileCode2, FileSearch, Fingerprint, FolderGit2, FolderOpen, Gauge, GitCompareArrows, Globe, Hash, History, KeyRound, LayoutDashboard, ListChecks, LoaderCircle, LockKeyhole, MapPin, Network, OctagonAlert, Radar, RotateCcw, Route, ScrollText, Shield, ShieldAlert, ShieldCheck, Sparkles, Trash2, Wrench, X, Zap } from 'lucide-react'
 import { EmptyState, Meter, PageHeader, Panel, SeverityBadge, SeverityIcon, Stat, StateBadge, StateIcon, ThemeToggle, severityMeta, stateMeta } from './ui'
 import './style.css'
 
@@ -10,7 +10,8 @@ type Limitation = {code:string;message:string;resolution:string;scanner:string|n
 type Step = {id:string;label:string;state:string;summary?:string;started_at?:number;finished_at?:number}
 type Stage = {id:string;label:string;state:string;summary:string;details?:Record<string,unknown>}
 type Report = {target:{url:string|null;repo_url:string|null;local_path:string|null;commit:string|null};started_at:number;finished_at:number;cancelled?:boolean;steps?:Step[];findings:Finding[];stages:Stage[];limitations:Limitation[];summary:{findings:number;completed:number;incomplete:number}}
-type Scan = {id:string;created:number;status:string;progress:string;target:{url?:string;repo_url?:string;local_path?:string};result:Report|null;error:string|null;steps?:Step[];finished?:number|null}
+type ScanTarget = {url?:string|null;repo_url?:string|null;local_path?:string|null;journey_file?:string|null;api_spec_file?:string|null;oob_server?:string|null;oob_token_env?:string|null;profile?:string|null;port_depth?:string|null;port_range?:string|null;crawl_depth?:number|null;crawl_duration_minutes?:number|null;template_rate?:number|null;inventory_limit?:number|null;browser_page_limit?:number|null}
+type Scan = {id:string;created:number;status:string;progress:string;target:ScanTarget;result:Report|null;error:string|null;steps?:Step[];finished?:number|null}
 type ScanListItem = Pick<Scan,'id'|'created'|'status'|'progress'|'error'|'finished'> & {target:string}
 type Comparison = {summary:{still_present:number;not_observed_on_rescan:number;not_verifiable:number;new:number}}
 type RemediationDraft = {summary:string;fix_steps:string[];verification:string;uncertainty:string;citation:string;model:string;status:string}
@@ -103,6 +104,7 @@ function App(){
   const [error,setError] = useState('')
   const [submitError,setSubmitError] = useState('')
   const [submittedScanId,setSubmittedScanId] = useState<string|null>(null)
+  const [rerunSourceId,setRerunSourceId] = useState<string|null>(null)
   const [selected,setSelected] = useState<Finding|null>(null)
   const [severity,setSeverity] = useState('all')
   const [comparison,setComparison] = useState<Comparison|null>(null)
@@ -117,6 +119,7 @@ function App(){
   const [confirmDelete,setConfirmDelete] = useState<string|null>(null)
   const [now,setNow] = useState(()=>Date.now()/1000)
   const closeButton = useRef<HTMLButtonElement>(null)
+  const scanForm = useRef<HTMLElement>(null)
   const active = !!scan && ['queued','running'].includes(scan.status)
   const scanRef = useRef(scan)
   scanRef.current = scan
@@ -233,6 +236,32 @@ function App(){
   const exportButton=report&&scan?<a className="btn secondary" href={`/api/scans/${scan.id}/export`}><Download size={15} aria-hidden="true"/>Export JSON</a>:undefined
   const targetOf=(target:{url?:string|null;repo_url?:string|null;local_path?:string|null})=>target.url||target.repo_url||target.local_path||'Target pending'
 
+  function prepareRerun(){
+    if(!scan||active) return
+    const target=scan.target
+    setUrl(target.url??'')
+    setRepo(target.repo_url??'')
+    setFolder(target.local_path??'')
+    setJourneyFile(target.journey_file??'')
+    setApiSpecFile(target.api_spec_file??'')
+    setOobServer(target.oob_server??'')
+    setOobTokenEnv(target.oob_token_env??'')
+    setProfile(target.profile==='full'||target.profile==='deep'?target.profile:'standard')
+    setAuthorized(false)
+    setPortDepth(target.port_depth==='quick'||target.port_depth==='thorough'||target.port_depth==='full'||target.port_depth==='custom'?target.port_depth:target.port_range?'custom':'standard')
+    setPortRange(target.port_range??'')
+    setCrawlDepth(String(target.crawl_depth??''))
+    setCrawlMinutes(String(target.crawl_duration_minutes??''))
+    setTemplateRate(String(target.template_rate??''))
+    setInventoryLimit(String(target.inventory_limit??''))
+    setBrowserPageLimit(String(target.browser_page_limit??''))
+    setSubmitError('')
+    setSubmittedScanId(null)
+    setRerunSourceId(scan.id)
+    go('overview',{scanId:scan.id})
+    window.requestAnimationFrame(()=>scanForm.current?.scrollIntoView({behavior:'smooth',block:'start'}))
+  }
+
   async function submit(event:React.FormEvent){
     event.preventDefault();setError('');setSubmitError('');setBusy(true)
     try{
@@ -242,6 +271,7 @@ function App(){
       const result=await jsonFetch<{id:string}>('/api/scans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:normalizedUrl||null,repo_url:repo.trim()||null,local_path:folder.trim()||null,journey_file:profile==='full'?journeyFile.trim()||null:null,api_spec_file:apiSpecFile.trim()||null,oob_server:profile==='full'?oobServer.trim()||null:null,oob_token_env:profile==='full'?oobTokenEnv.trim()||null:null,profile,authorized_intrusive:authorized,...fullOptions})})
       setScan({id:result.id,created:Date.now()/1000,status:'queued',progress:'Waiting to start',target:{url:normalizedUrl,repo_url:repo,local_path:folder},result:null,error:null})
       setSubmittedScanId(result.id)
+      setRerunSourceId(null)
       go('overview',{scanId:result.id})
       const items=await jsonFetch<ScanListItem[]>('/api/scans');setHistory(items)
     }catch(e){setSubmitError((e as Error).message)}finally{setBusy(false)}
@@ -288,8 +318,9 @@ function App(){
       <Stat label="Scanners ready" icon={Cpu} tone={scanners.length&&ready<scanners.length?'warn':undefined} value={scanners.length?`${ready}/${scanners.length}`:'—'} hint={scanners.length?(ready===scanners.length?'All capabilities available':'Some checks need setup'):'Checking…'}/>
     </div>
     <div className="overview-grid">
-      <section className="card scan-card">
+      <section className="card scan-card" ref={scanForm}>
         <div className="card-head"><h2>Start a scan</h2><span className="hint-text">Website, source, or both</span></div>
+        {rerunSourceId&&<div className="notice info" role="status">Settings from scan #{shortId(rerunSourceId)} are ready. Review the target and launch a new assessment.</div>}
         <form onSubmit={submit}>
           <label className="field"><span className="field-label">Website URL</span><span className="input"><Globe size={16} aria-hidden="true"/><input id="website" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://your-site.com" autoComplete="url"/></span></label>
           <div className="divider"><span>and / or</span></div>
@@ -339,6 +370,7 @@ function App(){
             {active&&<button type="button" className="btn danger block" onClick={stopScan} disabled={stopping}><CircleStop size={15} aria-hidden="true"/>{stopping?'Stopping scanners…':'Stop scan'}</button>}
             {scan.status==='failed'&&scan.error&&<div className="notice error"><CircleAlert size={15} aria-hidden="true"/>{scan.error}</div>}
             {scan.result&&<button className="btn secondary block" onClick={()=>go('findings')}>{scan.status==='cancelled'?'Explore partial report':'Explore report'}<ArrowRight size={15} aria-hidden="true"/></button>}
+            {!active&&steps.length===0&&<button type="button" className="btn secondary block" onClick={prepareRerun}><RotateCcw size={15} aria-hidden="true"/>Run again</button>}
           </>:<EmptyState icon={Radar} title="No scans yet">Start an assessment to build a local history of findings and coverage.</EmptyState>}
         </section>
         <section className="card readiness-card">
@@ -349,7 +381,7 @@ function App(){
       </div>
     </div>
     {steps.length>0&&<section className="card steps-section">
-      <div className="card-head"><h2>{active?'What is happening now':'What ran'}</h2><span className="hint-text">{doneSteps} of {steps.length} finished · #{shortId(scan!.id)}</span></div>
+      <div className="card-head"><h2>{active?'What is happening now':'What ran'}</h2><div className="head-actions"><span className="hint-text">{doneSteps} of {steps.length} finished · #{shortId(scan!.id)}</span>{!active&&<button type="button" className="btn ghost sm" onClick={prepareRerun}><RotateCcw size={14} aria-hidden="true"/>Run again</button>}</div></div>
       <ol className="step-list">{steps.map(step=>{const seconds=step.started_at?(step.finished_at||now)-step.started_at:null;return <li key={step.id} className={'step '+step.state}><StateIcon state={step.state}/><span className="step-label"><strong>{step.label}</strong><small>{step.summary||stepWords[step.state]||step.state}</small></span><span className="step-time">{seconds===null?'':elapsed(seconds)}</span></li>})}</ol>
     </section>}
     <section className="card history">

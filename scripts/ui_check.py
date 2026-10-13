@@ -55,6 +55,21 @@ def main(base: str, target: str, screenshot: str, timeout_seconds: float) -> int
         page.wait_for_url("**/coverage")
         page.get_by_role("heading", name="Scanner stages").wait_for()
         print("UI: pages and findings have their own URLs; browser Back and Forward stay inside the dashboard", flush=True)
+        page.get_by_role("link", name="Overview", exact=True).click()
+        previous_scan_id = page.locator(".run-meta code").inner_text()
+        page.get_by_role("button", name="Full scope").click()
+        page.get_by_label("I am authorized to run intrusive checks against this website.").check()
+        page.get_by_role("button", name="Run again").click()
+        if page.locator("#website").input_value() != target:
+            raise RuntimeError("Run again did not restore the website target")
+        if page.get_by_role("button", name="Standard").get_attribute("aria-pressed") != "true":
+            raise RuntimeError("Run again did not restore the scan profile")
+        if page.locator(".run-meta code").inner_text() != previous_scan_id:
+            raise RuntimeError("Run again started a scan without review")
+        page.get_by_role("button", name="Full scope").click()
+        if page.get_by_label("I am authorized to run intrusive checks against this website.").is_checked():
+            raise RuntimeError("Run again reused intrusive scan authorization")
+        print("UI: Run again restores the target and profile without launching or retaining intrusive authorization", flush=True)
         page.screenshot(path=screenshot, full_page=True)
         browser.close()
     if errors:
