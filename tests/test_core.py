@@ -79,6 +79,22 @@ class TargetValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "explicit authorization"):
             execute_scan({"url": "https://example.test", "profile": "full"}, lambda *_: None)
 
+    def test_retry_runs_only_requested_browser_stage(self):
+        from unittest.mock import patch
+
+        calls = []
+
+        def fake_scan(spec, _values, _work, _cancel):
+            calls.append(spec["id"])
+            return [], {"id": spec["id"], "label": spec["label"], "state": "completed", "summary": "Checked", "details": {}}, []
+
+        with patch("app.core.scan_one", side_effect=fake_scan):
+            report = execute_scan({"url": "https://example.test", "profile": "full", "authorized_intrusive": True, "retry_step_ids": ["browser"], "retry_of": "earlier"}, lambda *_: None)
+        self.assertEqual(calls, ["browser"])
+        self.assertEqual([step["id"] for step in report["steps"]], ["browser"])
+        self.assertEqual(report["retry_of"], "earlier")
+        self.assertEqual({item["code"] for item in report["limitations"]}, {"selected_retry_scope"})
+
     def test_journey_file_requires_full_website_scan(self):
         with tempfile.TemporaryDirectory() as temp:
             journey = Path(temp) / "journey.json"

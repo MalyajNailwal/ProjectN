@@ -8,6 +8,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -97,6 +98,11 @@ class DraftRequest(BaseModel):
     allow_external: bool = False
 
 
+class RetryRequest(BaseModel):
+    step_id: str
+    authorized_intrusive: bool = False
+
+
 def update_scan(scan_id: str, **fields):
     with connection() as db:
         values = list(fields.values()) + [scan_id]
@@ -147,7 +153,10 @@ def scans():
 
 @app.post("/api/scans", status_code=202)
 def create_scan(request: ScanRequest):
-    values = request.model_dump()
+    return queue_scan(request.model_dump())
+
+
+def queue_scan(values: dict):
     if not any(values.get(key) for key in ("url", "repo_url", "local_path")):
         raise HTTPException(422, "Provide a website URL, GitHub URL, or local folder.")
     if values["repo_url"] and values["local_path"]:
@@ -179,12 +188,30 @@ def create_scan(request: ScanRequest):
         raise HTTPException(422, str(exc)) from exc
     scan_id = str(uuid.uuid4())
     with connection() as db:
-        stored_target = {**values, "url": public_url(values["url"]) if values["url"] else None}
+        stored_target = {**values, "url": public_url(values["url"]) if values["url"] else None, "url_query_removed": bool(values["url"] and urlparse(values["url"]).query)}
         db.execute("INSERT INTO scans (id, created, status, progress, target) VALUES (?, ?, ?, ?, ?)", (scan_id, time.time(), "queued", "Waiting to start", json.dumps(stored_target)))
         db.commit()
     ACTIVE[scan_id] = threading.Event()
     threading.Thread(target=run_scan, args=(scan_id, values, ACTIVE[scan_id]), daemon=True).start()
     return {"id": scan_id, "status": "queued"}
+
+
+@app.post("/api/scans/{scan_id}/retry", status_code=202)
+def retry_scan(scan_id: str, request: RetryRequest):
+    previous = scan_detail(scan_id)
+    if previous["status"] in {"queued", "running"}:
+        raise HTTPException(409, "Stop or finish the current scan before retrying a check.")
+    prior_steps = previous["steps"] or (previous["result"] or {}).get("steps", [])
+    step = next((item for item in prior_steps if item["id"] == request.step_id), None)
+    if step is None or step["state"] not in {"failed", "partial", "not_run", "cancelled"}:
+        raise HTTPException(422, "Only an incomplete check from this scan can be retried.")
+    if previous["target"].get("url_query_removed"):
+        raise HTTPException(409, "The original URL query was withheld from history. Start a new scan with the full URL to repeat this check.")
+    values = ScanRequest.model_validate(previous["target"]).model_dump()
+    values["authorized_intrusive"] = request.authorized_intrusive
+    values["retry_of"] = scan_id
+    values["retry_step_ids"] = [request.step_id]
+    return queue_scan(values)
 
 
 @app.get("/api/scans/{scan_id}")

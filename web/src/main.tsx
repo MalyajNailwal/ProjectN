@@ -9,7 +9,7 @@ type Finding = {id:string;scanner:string;title:string;severity:string;location:s
 type Limitation = {code:string;message:string;resolution:string;scanner:string|null}
 type Step = {id:string;label:string;state:string;summary?:string;started_at?:number;finished_at?:number}
 type Stage = {id:string;label:string;state:string;summary:string;details?:Record<string,unknown>}
-type Report = {target:{url:string|null;repo_url:string|null;local_path:string|null;commit:string|null};started_at:number;finished_at:number;cancelled?:boolean;steps?:Step[];findings:Finding[];stages:Stage[];limitations:Limitation[];summary:{findings:number;completed:number;incomplete:number}}
+type Report = {target:{url:string|null;repo_url:string|null;local_path:string|null;commit:string|null};retry_of?:string|null;requested_steps?:string[]|null;started_at:number;finished_at:number;cancelled?:boolean;steps?:Step[];findings:Finding[];stages:Stage[];limitations:Limitation[];summary:{findings:number;completed:number;incomplete:number}}
 type ScanTarget = {url?:string|null;repo_url?:string|null;local_path?:string|null;journey_file?:string|null;api_spec_file?:string|null;oob_server?:string|null;oob_token_env?:string|null;profile?:string|null;port_depth?:string|null;port_range?:string|null;crawl_depth?:number|null;crawl_duration_minutes?:number|null;template_rate?:number|null;inventory_limit?:number|null;browser_page_limit?:number|null}
 type Scan = {id:string;created:number;status:string;progress:string;target:ScanTarget;result:Report|null;error:string|null;steps?:Step[];finished?:number|null}
 type ScanListItem = Pick<Scan,'id'|'created'|'status'|'progress'|'error'|'finished'> & {target:string}
@@ -104,7 +104,10 @@ function App(){
   const [error,setError] = useState('')
   const [submitError,setSubmitError] = useState('')
   const [submittedScanId,setSubmittedScanId] = useState<string|null>(null)
-  const [rerunSourceId,setRerunSourceId] = useState<string|null>(null)
+  const [retryStepId,setRetryStepId] = useState<string|null>(null)
+  const [retryAuthorized,setRetryAuthorized] = useState(false)
+  const [retryBusy,setRetryBusy] = useState(false)
+  const [retryError,setRetryError] = useState('')
   const [selected,setSelected] = useState<Finding|null>(null)
   const [severity,setSeverity] = useState('all')
   const [comparison,setComparison] = useState<Comparison|null>(null)
@@ -119,7 +122,7 @@ function App(){
   const [confirmDelete,setConfirmDelete] = useState<string|null>(null)
   const [now,setNow] = useState(()=>Date.now()/1000)
   const closeButton = useRef<HTMLButtonElement>(null)
-  const scanForm = useRef<HTMLElement>(null)
+  const retryPanel = useRef<HTMLDivElement>(null)
   const active = !!scan && ['queued','running'].includes(scan.status)
   const scanRef = useRef(scan)
   scanRef.current = scan
@@ -193,6 +196,9 @@ function App(){
     return ()=>window.clearInterval(timer)
   },[active,scan?.id])
   useEffect(()=>{
+    if(retryStepId) window.requestAnimationFrame(()=>retryPanel.current?.scrollIntoView({behavior:'smooth',block:'nearest'}))
+  },[retryStepId])
+  useEffect(()=>{
     setComparison(null)
     if(!scan?.result) return
     const current=scan.target
@@ -236,30 +242,16 @@ function App(){
   const exportButton=report&&scan?<a className="btn secondary" href={`/api/scans/${scan.id}/export`}><Download size={15} aria-hidden="true"/>Export JSON</a>:undefined
   const targetOf=(target:{url?:string|null;repo_url?:string|null;local_path?:string|null})=>target.url||target.repo_url||target.local_path||'Target pending'
 
-  function prepareRerun(){
-    if(!scan||active) return
-    const target=scan.target
-    setUrl(target.url??'')
-    setRepo(target.repo_url??'')
-    setFolder(target.local_path??'')
-    setJourneyFile(target.journey_file??'')
-    setApiSpecFile(target.api_spec_file??'')
-    setOobServer(target.oob_server??'')
-    setOobTokenEnv(target.oob_token_env??'')
-    setProfile(target.profile==='full'||target.profile==='deep'?target.profile:'standard')
-    setAuthorized(false)
-    setPortDepth(target.port_depth==='quick'||target.port_depth==='thorough'||target.port_depth==='full'||target.port_depth==='custom'?target.port_depth:target.port_range?'custom':'standard')
-    setPortRange(target.port_range??'')
-    setCrawlDepth(String(target.crawl_depth??''))
-    setCrawlMinutes(String(target.crawl_duration_minutes??''))
-    setTemplateRate(String(target.template_rate??''))
-    setInventoryLimit(String(target.inventory_limit??''))
-    setBrowserPageLimit(String(target.browser_page_limit??''))
-    setSubmitError('')
-    setSubmittedScanId(null)
-    setRerunSourceId(scan.id)
-    go('overview',{scanId:scan.id})
-    window.requestAnimationFrame(()=>scanForm.current?.scrollIntoView({behavior:'smooth',block:'start'}))
+  async function retryStep(){
+    if(!scan||!retryStepId||retryBusy) return
+    setRetryBusy(true);setRetryError('')
+    try{
+      const result=await jsonFetch<{id:string}>(`/api/scans/${scan.id}/retry`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({step_id:retryStepId,authorized_intrusive:retryAuthorized})})
+      setScan({id:result.id,created:Date.now()/1000,status:'queued',progress:'Waiting to start',target:scan.target,result:null,error:null})
+      setSubmittedScanId(result.id);setRetryStepId(null);setRetryAuthorized(false)
+      go('overview',{scanId:result.id})
+      setHistory(await jsonFetch<ScanListItem[]>('/api/scans'))
+    }catch(e){setRetryError((e as Error).message)}finally{setRetryBusy(false)}
   }
 
   async function submit(event:React.FormEvent){
@@ -271,7 +263,6 @@ function App(){
       const result=await jsonFetch<{id:string}>('/api/scans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:normalizedUrl||null,repo_url:repo.trim()||null,local_path:folder.trim()||null,journey_file:profile==='full'?journeyFile.trim()||null:null,api_spec_file:apiSpecFile.trim()||null,oob_server:profile==='full'?oobServer.trim()||null:null,oob_token_env:profile==='full'?oobTokenEnv.trim()||null:null,profile,authorized_intrusive:authorized,...fullOptions})})
       setScan({id:result.id,created:Date.now()/1000,status:'queued',progress:'Waiting to start',target:{url:normalizedUrl,repo_url:repo,local_path:folder},result:null,error:null})
       setSubmittedScanId(result.id)
-      setRerunSourceId(null)
       go('overview',{scanId:result.id})
       const items=await jsonFetch<ScanListItem[]>('/api/scans');setHistory(items)
     }catch(e){setSubmitError((e as Error).message)}finally{setBusy(false)}
@@ -282,7 +273,7 @@ function App(){
     try{await jsonFetch(`/api/scans/${scan.id}/cancel`,{method:'POST'})}catch(e){setError((e as Error).message);setStopping(false)}
   }
   async function openScan(id:string,next:View='overview'){
-    setError('');setSelected(null)
+    setError('');setSelected(null);setRetryStepId(null);setRetryAuthorized(false);setRetryError('')
     try{setScan(await jsonFetch<Scan>(`/api/scans/${id}`));go(next,{scanId:id})}catch(e){setError((e as Error).message)}
   }
   async function removeScans(id?:string){
@@ -318,9 +309,8 @@ function App(){
       <Stat label="Scanners ready" icon={Cpu} tone={scanners.length&&ready<scanners.length?'warn':undefined} value={scanners.length?`${ready}/${scanners.length}`:'—'} hint={scanners.length?(ready===scanners.length?'All capabilities available':'Some checks need setup'):'Checking…'}/>
     </div>
     <div className="overview-grid">
-      <section className="card scan-card" ref={scanForm}>
+      <section className="card scan-card">
         <div className="card-head"><h2>Start a scan</h2><span className="hint-text">Website, source, or both</span></div>
-        {rerunSourceId&&<div className="notice info" role="status">Settings from scan #{shortId(rerunSourceId)} are ready. Review the target and launch a new assessment.</div>}
         <form onSubmit={submit}>
           <label className="field"><span className="field-label">Website URL</span><span className="input"><Globe size={16} aria-hidden="true"/><input id="website" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://your-site.com" autoComplete="url"/></span></label>
           <div className="divider"><span>and / or</span></div>
@@ -370,7 +360,6 @@ function App(){
             {active&&<button type="button" className="btn danger block" onClick={stopScan} disabled={stopping}><CircleStop size={15} aria-hidden="true"/>{stopping?'Stopping scanners…':'Stop scan'}</button>}
             {scan.status==='failed'&&scan.error&&<div className="notice error"><CircleAlert size={15} aria-hidden="true"/>{scan.error}</div>}
             {scan.result&&<button className="btn secondary block" onClick={()=>go('findings')}>{scan.status==='cancelled'?'Explore partial report':'Explore report'}<ArrowRight size={15} aria-hidden="true"/></button>}
-            {!active&&steps.length===0&&<button type="button" className="btn secondary block" onClick={prepareRerun}><RotateCcw size={15} aria-hidden="true"/>Run again</button>}
           </>:<EmptyState icon={Radar} title="No scans yet">Start an assessment to build a local history of findings and coverage.</EmptyState>}
         </section>
         <section className="card readiness-card">
@@ -381,8 +370,10 @@ function App(){
       </div>
     </div>
     {steps.length>0&&<section className="card steps-section">
-      <div className="card-head"><h2>{active?'What is happening now':'What ran'}</h2><div className="head-actions"><span className="hint-text">{doneSteps} of {steps.length} finished · #{shortId(scan!.id)}</span>{!active&&<button type="button" className="btn ghost sm" onClick={prepareRerun}><RotateCcw size={14} aria-hidden="true"/>Run again</button>}</div></div>
-      <ol className="step-list">{steps.map(step=>{const seconds=step.started_at?(step.finished_at||now)-step.started_at:null;return <li key={step.id} className={'step '+step.state}><StateIcon state={step.state}/><span className="step-label"><strong>{step.label}</strong><small>{step.summary||stepWords[step.state]||step.state}</small></span><span className="step-time">{seconds===null?'':elapsed(seconds)}</span></li>})}</ol>
+      <div className="card-head"><h2>{active?'What is happening now':'What ran'}</h2><span className="hint-text">{doneSteps} of {steps.length} finished · #{shortId(scan!.id)}</span></div>
+      {report?.retry_of&&<div className="notice info">Selected check retried from scan #{shortId(report.retry_of)}. The earlier report keeps results from checks that were not repeated.</div>}
+      <ol className="step-list">{steps.map(step=>{const seconds=step.started_at?(step.finished_at||now)-step.started_at:null;const canRetry=!active&&['failed','partial','not_run','cancelled'].includes(step.state);return <li key={step.id} className={'step '+step.state}><StateIcon state={step.state}/><span className="step-label"><strong>{step.label}</strong><small>{step.summary||stepWords[step.state]||step.state}</small></span>{canRetry&&<button type="button" className="btn ghost sm" onClick={()=>{setRetryStepId(retryStepId===step.id?null:step.id);setRetryAuthorized(false);setRetryError('')}} aria-label={`Retry ${step.label}`}><RotateCcw size={13} aria-hidden="true"/>Retry</button>}<span className="step-time">{seconds===null?'':elapsed(seconds)}</span></li>})}</ol>
+      {retryStepId&&<div className="retry-panel" ref={retryPanel}><strong>Retry {steps.find(step=>step.id===retryStepId)?.label}</strong><p>This starts a new report for this check. Required preparation steps may also run. The earlier report stays available.</p>{scan?.target.profile==='full'&&!!scan.target.url&&<label className="consent"><input type="checkbox" checked={retryAuthorized} onChange={event=>setRetryAuthorized(event.target.checked)}/><span>I am authorized to run intrusive checks against this website.</span></label>}<div className="head-actions"><button type="button" className="btn ghost sm" onClick={()=>{setRetryStepId(null);setRetryError('')}}>Cancel</button><button type="button" className="btn primary sm" disabled={retryBusy||(scan?.target.profile==='full'&&!!scan.target.url&&!retryAuthorized)} onClick={retryStep}>{retryBusy?'Starting…':'Start retry'}</button></div>{retryError&&<div className="notice error" role="alert">{retryError}</div>}</div>}
     </section>}
     <section className="card history">
       <div className="card-head"><h2><History size={16} aria-hidden="true"/>Recent scans</h2><div className="head-actions"><span className="hint-text">{history.length} stored on this computer</span>{history.some(item=>!['queued','running'].includes(item.status))&&(confirmClear

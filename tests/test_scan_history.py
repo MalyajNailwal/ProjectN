@@ -67,6 +67,33 @@ class ScanHistoryTests(unittest.TestCase):
         self.assertIsInstance(finished["new"], float)
         self.assertGreater(finished["new"], 200)
 
+    def test_retry_accepts_only_incomplete_check_and_requires_fresh_full_authorization(self):
+        target = {"url": "https://example.test", "profile": "full", "authorized_intrusive": True}
+        steps = [{"id": "browser", "state": "failed"}, {"id": "surface", "state": "completed"}]
+        with main.connection() as db:
+            db.execute("UPDATE scans SET target = ?, steps = ? WHERE id = 'done-1'", (json.dumps(target), json.dumps(steps)))
+        with self.assertRaises(HTTPException) as completed:
+            main.retry_scan("done-1", main.RetryRequest(step_id="surface", authorized_intrusive=True))
+        self.assertEqual(completed.exception.status_code, 422)
+        with self.assertRaises(HTTPException) as no_consent:
+            main.retry_scan("done-1", main.RetryRequest(step_id="browser"))
+        self.assertEqual(no_consent.exception.status_code, 422)
+        with patch.object(main, "queue_scan", return_value={"id": "retry", "status": "queued"}) as queued:
+            self.assertEqual(main.retry_scan("done-1", main.RetryRequest(step_id="browser", authorized_intrusive=True))["id"], "retry")
+        values = queued.call_args.args[0]
+        self.assertEqual(values["retry_step_ids"], ["browser"])
+        self.assertEqual(values["retry_of"], "done-1")
+        with main.connection() as db:
+            db.execute("UPDATE scans SET steps = NULL, result = ? WHERE id = 'done-1'", (json.dumps({"steps": steps}),))
+        with patch.object(main, "queue_scan", return_value={"id": "retry", "status": "queued"}):
+            self.assertEqual(main.retry_scan("done-1", main.RetryRequest(step_id="browser", authorized_intrusive=True))["id"], "retry")
+        target["url_query_removed"] = True
+        with main.connection() as db:
+            db.execute("UPDATE scans SET target = ? WHERE id = 'done-1'", (json.dumps(target),))
+        with self.assertRaises(HTTPException) as lost_query:
+            main.retry_scan("done-1", main.RetryRequest(step_id="browser", authorized_intrusive=True))
+        self.assertEqual(lost_query.exception.status_code, 409)
+
 
 if __name__ == "__main__":
     unittest.main()

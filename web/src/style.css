@@ -235,6 +235,11 @@ p{margin:0}
 .step-label strong{display:block;font-size:12.5px;font-weight:600}
 .step-label small{display:block;color:var(--text-3);font-size:11.5px;overflow-wrap:anywhere}
 .step-time{flex:none;color:var(--text-3);font-size:11.5px;font-variant-numeric:tabular-nums}
+.step .btn{flex:none}
+.retry-panel{display:grid;gap:10px;margin-top:14px;padding:14px;border:1px solid var(--border-strong);border-radius:10px;background:var(--surface-2)}
+.retry-panel>strong{font-size:13px}
+.retry-panel p{margin:0;color:var(--text-2);font-size:12.5px}
+.retry-panel .head-actions{justify-content:flex-start}
 
 /* Lists and rows */
 .rows{display:grid}

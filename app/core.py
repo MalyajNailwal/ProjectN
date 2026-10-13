@@ -704,6 +704,25 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
         steps.append({"id": "slopsquat", "label": "Dependency name verification"})
     if api_spec_file:
         steps.append({"id": "api_spec", "label": "OpenAPI contract comparison"})
+    retry_step_ids = request.get("retry_step_ids")
+    if retry_step_ids is not None:
+        available = {step["id"] for step in steps}
+        requested = set(retry_step_ids)
+        if not requested or not requested <= available:
+            raise ValueError("Retry contains a stage that is not available for this target and profile.")
+        dependencies = {"infra": {"surface"}, "supabase": {"surface"}, "firebase": {"surface"}, "signup_limits": {"browser"}, "api_spec": {"crawler", "browser"}}
+        run_ids = requested | set().union(*(dependencies.get(step_id, set()) for step_id in requested))
+        if "clone" in requested:
+            run_ids.update(spec["id"] for spec in selected if spec["kind"] == "code")
+            run_ids.add("slopsquat")
+        if repo_url and any(step_id in run_ids for step_id in {"static", "secrets", "dependencies", "slopsquat"}):
+            run_ids.add("clone")
+        run_ids &= available
+        steps = [step for step in steps if step["id"] in run_ids]
+        selected = [spec for spec in selected if spec["id"] in run_ids]
+        limitations.append(gap("selected_retry_scope", "This report contains only the selected retry and required preparation stages; other checks remain in the earlier report.", "Review the earlier report for checks not repeated here."))
+    else:
+        run_ids = {step["id"] for step in steps}
     for step in steps:
         step.update(state="pending", summary="")
 
@@ -727,14 +746,14 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
         work = Path(temp)
         repo = local_path
         commit = None
-        if url and profile not in {"deep", "full"}:
+        if retry_step_ids is None and url and profile not in {"deep", "full"}:
             limitations.append(gap("deep_checks_not_selected", "Template-based vulnerability checks were not selected for this scan.", "Choose Deep scan for an authorized target to run those checks."))
-        if url and not (repo_url or local_path):
+        if retry_step_ids is None and url and not (repo_url or local_path):
             limitations.append(gap("source_not_provided", "Source code and Git history were not assessed.", "Add a public GitHub URL or local source folder to this project."))
-        if not url:
+        if retry_step_ids is None and not url:
             limitations.append(gap("website_not_provided", "The live website and its network exposure were not assessed.", "Add a website URL to this project."))
         try:
-            if repo_url:
+            if repo_url and "clone" in run_ids:
                 begin("clone", "Cloning public repository")
                 repo = work / "source"
                 try:
@@ -752,32 +771,38 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
                 revision = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10, shell=False)
                 commit = revision.stdout.strip() if revision.returncode == 0 else None
             values = {"url": url or "", "host": host or "", "repo": str(repo) if repo else "", "journey_file": str(journey_file) if journey_file else "", "oob_server": oob_server or "", "oob_token_env": oob_token_env or "", "profile": profile, "port_range": full_options["port_range"], "port_flag": full_options.get("port_flag", "--top-ports"), "port_value": full_options.get("port_value", "1000"), "crawl_depth": str(full_options["crawl_depth"]), "crawl_duration": f"{full_options['crawl_duration_minutes']}m", "template_rate": str(full_options["template_rate"]), "inventory_limit": full_options["inventory_limit"], "browser_page_limit": str(full_options["browser_page_limit"])}
-            if url:
+            if url and "surface" in run_ids:
                 begin("surface", "Inspecting HTTP surface")
                 found, stage, issues, surface_body = inspect_website(url, host)
                 stage.update(source_revision=builtin_revision("app/web_probe.py", "config/web_probe.json"), rules_dirty=False)
                 surface_headers = stage.get("details", {}).get("headers", {})
                 surface_links = stage.get("details", {}).get("links", [])
                 record(found, stage, issues)
+            if url and "tls" in run_ids:
                 begin("tls", "Inspecting TLS connection")
                 found, stage, issues = inspect_tls(url, host)
                 stage.update(source_revision=builtin_revision("app/tls_probe.py", "config/web_probe.json"), rules_dirty=False)
                 record(found, stage, issues)
-                if profile == "full":
+            if url and profile == "full":
+                if "tls_config" in run_ids:
                     begin("tls_config", "Enumerating TLS protocols and cipher suites")
                     record(*inspect_tls_config(url, host, cancel))
+                if "supabase" in run_ids:
                     begin("supabase", "Testing Supabase table and storage exposure")
                     found, stage, issues = inspect_supabase(surface_body, cancel, links=surface_links)
                     stage.update(source_revision=builtin_revision("app/supabase_probe.py", "config/supabase_probe.json"), rules_dirty=False)
                     record(found, stage, issues)
+                if "firebase" in run_ids:
                     begin("firebase", "Testing Firebase database exposure")
                     found, stage, issues = inspect_firebase(surface_body, cancel, links=surface_links)
                     stage.update(source_revision=builtin_revision("app/firebase_probe.py", "config/firebase_probe.json"), rules_dirty=False)
                     record(found, stage, issues)
+                if "graphql" in run_ids:
                     begin("graphql", "Testing GraphQL introspection")
                     found, stage, issues = inspect_graphql(url, cancel)
                     stage.update(source_revision=builtin_revision("app/graphql_probe.py", "config/graphql_probe.json"), rules_dirty=False)
                     record(found, stage, issues)
+            if url and "infra" in run_ids:
                 begin("infra", "Profiling hosting, backend, and frontend signals")
                 found, stage, issues = inspect_infrastructure(surface_headers, surface_body, links=surface_links if profile == "full" else ())
                 stage.update(source_revision=builtin_revision("app/infra_probe.py", "config/infra_signals.json"), rules_dirty=False)
@@ -786,19 +811,19 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
             for spec in runnable:
                 begin(spec["id"], f"Running {spec['label']}")
                 record(*scan_one(spec, values, work, cancel))
-            if url and profile == "full":
+            if url and profile == "full" and "signup_limits" in run_ids:
                 browser_stage = next((item for item in stages if item["id"] == "browser"), None)
                 forms = browser_stage["details"].get("forms", []) if browser_stage and browser_stage.get("details") else []
                 begin("signup_limits", "Testing signup form rate limiting")
                 found, stage, issues = inspect_signup_rate_limit(forms, cancel)
                 stage.update(source_revision=builtin_revision("app/signup_probe.py", "config/signup_probe.json"), rules_dirty=False)
                 record(found, stage, issues)
-            if repo:
+            if repo and "slopsquat" in run_ids:
                 begin("slopsquat", "Verifying dependency names against their registry")
                 found, stage, issues = inspect_slopsquat(repo, cancel)
                 stage.update(source_revision=builtin_revision("app/slopsquat_probe.py", "config/slopsquat_probe.json"), rules_dirty=False)
                 record(found, stage, issues)
-            if api_spec_file:
+            if api_spec_file and "api_spec" in run_ids:
                 begin("api_spec", "Comparing OpenAPI contract with observed routes")
                 observed = []
                 for stage in stages:
@@ -825,14 +850,14 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
             for capability in JOURNEY_COVERAGE["required"]:
                 if capability["id"] not in exercised:
                     limitations.append(gap("journey_capability_not_assessed", capability["message"], "Add a scoped journey with controlled accounts and mark its covers field after verifying its assertions.", "journeys"))
-        if request.get("profile") in {"deep", "full"} and "templates" in completed_stages:
+        if retry_step_ids is None and request.get("profile") in {"deep", "full"} and "templates" in completed_stages:
             for policy in COVERAGE["deep_profile_limits"]:
                 limitations.append(gap(policy["code"], policy["message"], policy["resolution"], "templates"))
         step_states = {step["id"]: step["state"] for step in steps}
         stage_states = {stage["id"]: stage["state"] for stage in stages}
         configured = {spec["id"]: spec for spec in specs()}
         reasons = COVERAGE["not_assessed_resolutions"]
-        for category, enabled in (("website", bool(url)), ("code", bool(repo))):
+        for category, enabled in (("website", bool(url) and retry_step_ids is None), ("code", bool(repo) and retry_step_ids is None)):
             if enabled:
                 for capability in COVERAGE[category]:
                     stage_id = capability["stage"]
@@ -856,7 +881,7 @@ def execute_scan(request: dict, progress, cancel=None) -> dict:
                 item["location"] = public_url(item["location"])
             identity = json.dumps([item["scanner"], item["rule"], item["location"], item["title"]], separators=(",", ":"))
             item["fingerprint"] = hashlib.sha256(identity.encode()).hexdigest()[:24]
-    return {"target": {"url": public_url(url) if url else None, "host": host, "repo_url": repo_url, "local_path": str(local_path) if local_path else None, "commit": commit, "profile": profile, "full_options": full_options if profile == "full" else None}, "started_at": started, "finished_at": time.time(), "cancelled": cancelled, "steps": steps, "findings": findings, "stages": stages, "limitations": limitations, "summary": {"findings": len(findings), "completed": sum(s["state"] == "completed" for s in stages), "incomplete": sum(s["state"] != "completed" for s in stages)}}
+    return {"target": {"url": public_url(url) if url else None, "host": host, "repo_url": repo_url, "local_path": str(local_path) if local_path else None, "commit": commit, "profile": profile, "full_options": full_options if profile == "full" else None}, "retry_of": request.get("retry_of"), "requested_steps": retry_step_ids, "started_at": started, "finished_at": time.time(), "cancelled": cancelled, "steps": steps, "findings": findings, "stages": stages, "limitations": limitations, "summary": {"findings": len(findings), "completed": sum(s["state"] == "completed" for s in stages), "incomplete": sum(s["state"] != "completed" for s in stages)}}
 
 
 def compare_reports(previous: dict, current: dict) -> dict:
