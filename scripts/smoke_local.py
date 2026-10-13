@@ -18,6 +18,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+BROWSER_RUNTIME = ROOT / json.loads((ROOT / "config/scanners.json").read_text(encoding="utf-8"))["browser_runtime_dir"]
 
 
 class FixtureHandler(http.server.SimpleHTTPRequestHandler):
@@ -33,11 +34,7 @@ class FixtureServer(http.server.ThreadingHTTPServer):
 def browser_python() -> Path:
     """Return the Playwright runtime's Python, installing the runtime and Chromium first if needed."""
     python = ROOT / "tools/venvs/browser-journeys" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    if not python.is_file() or subprocess.run([str(python), "-c", "import playwright"], capture_output=True, check=False).returncode:
-        print("Playwright runtime not found; installing it with Chromium (about 200 MB)...", flush=True)
-        subprocess.run([sys.executable, str(ROOT / "scripts/setup_native.py"), "browser"], check=True)
-    else:
-        subprocess.run([str(python), "-m", "playwright", "install", "chromium"], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/setup_native.py"), "browser"], check=True)
     return python
 
 
@@ -53,7 +50,7 @@ def scan_fixture(base: str, required_stages: list[str], profile: str, fields: di
             # Launch through the dashboard form in a real browser, then check the stored report below.
             screenshot = ROOT / "data/ui-check.png"
             screenshot.parent.mkdir(exist_ok=True)
-            subprocess.run([str(ui), str(ROOT / "scripts/ui_check.py"), base, target, str(screenshot), str(timeout)], check=True, timeout=timeout + 300)
+            subprocess.run([str(ui), str(ROOT / "scripts/ui_check.py"), base, target, str(screenshot), str(timeout)], check=True, timeout=timeout + 300, env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": str(BROWSER_RUNTIME)})
             with urllib.request.urlopen(base + "/api/scans", timeout=5) as response:
                 scan_id = json.load(response)[0]["id"]
         else:
