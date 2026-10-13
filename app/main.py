@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from app.core import DATA, FULL_DEFAULTS, ROOT, ScanCancelled, compare_reports, execute_scan, full_scan_options, public_url, readiness, specs, validate_repo_url, validate_target_url
@@ -286,8 +286,24 @@ def export_scan(scan_id: str):
     item = scan_detail(scan_id)
     if not item["result"]:
         raise HTTPException(409, "Report is not ready")
-    from fastapi.responses import Response
     return Response(json.dumps(item["result"], indent=2), media_type="application/json", headers={"Content-Disposition": f'attachment; filename="projectn-{scan_id}.json"'})
+
+
+@app.get("/api/scans/{scan_id}/download")
+def download_scan(scan_id: str, format: str):
+    if format not in {"pdf", "docx"}:
+        raise HTTPException(422, "Choose PDF or Word format.")
+    item = scan_detail(scan_id)
+    if not item["result"]:
+        raise HTTPException(409, "Report is not ready")
+    from app.report_document import blocks_for, make_docx, make_pdf
+    blocks, target, report_id = blocks_for(item)
+    try:
+        content = make_pdf(blocks, target, report_id) if format == "pdf" else make_docx(blocks, target, report_id)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    media = "application/pdf" if format == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return Response(content, media_type=media, headers={"Content-Disposition": f'attachment; filename="projectn-report-{scan_id[:8]}.{format}"', "Cache-Control": "no-store"})
 
 
 @app.get("/api/scans/{scan_id}/findings/{finding_id}/history")

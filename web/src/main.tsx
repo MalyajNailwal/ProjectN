@@ -241,7 +241,7 @@ function App(){
   const infraBaas=detail<InfraMatch[]>('infra','baas')
   const infraFrameworks=detail<InfraMatch[]>('infra','frameworks')
   const navBadge:Partial<Record<View,string|number>>={findings:report?report.findings.length:undefined,coverage:report?.limitations.length||undefined,setup:scanners.length?`${ready}/${scanners.length}`:undefined}
-  const exportButton=report&&scan?<a className="btn secondary" href={`/api/scans/${scan.id}/export`}><Download size={15} aria-hidden="true"/>Export JSON</a>:undefined
+  const exportButton=report&&scan?<details className="report-download"><summary className="btn secondary"><Download size={15} aria-hidden="true"/>Download report</summary><div className="report-download-menu" aria-label="Report formats"><a href={`/api/scans/${scan.id}/download?format=pdf`}>PDF <small>Shareable assessment</small></a><a href={`/api/scans/${scan.id}/download?format=docx`}>Word <small>Editable developer brief</small></a><a href={`/api/scans/${scan.id}/export`}>JSON <small>Full structured scan data</small></a></div></details>:undefined
   const targetOf=(target:{url?:string|null;repo_url?:string|null;local_path?:string|null})=>target.url||target.repo_url||target.local_path||'Target pending'
 
   function chooseRetry(stepId:string){
@@ -370,6 +370,7 @@ function App(){
             {active&&<button type="button" className="btn danger block" onClick={stopScan} disabled={stopping}><CircleStop size={15} aria-hidden="true"/>{stopping?'Stopping scanners…':'Stop scan'}</button>}
             {scan.status==='failed'&&scan.error&&<div className="notice error"><CircleAlert size={15} aria-hidden="true"/>{scan.error}</div>}
             {scan.result&&<button className="btn secondary block" onClick={()=>go('findings')}>{scan.status==='cancelled'?'Explore partial report':'Explore report'}<ArrowRight size={15} aria-hidden="true"/></button>}
+            {scan.result&&<div className="run-download">{exportButton}</div>}
           </>:<EmptyState icon={Radar} title="No scans yet">Start an assessment to build a local history of findings and coverage.</EmptyState>}
         </section>
         <section className="card readiness-card">
